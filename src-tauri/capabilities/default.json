@@ -24,6 +24,7 @@
         { "url": "https://platform.deepseek.com/*" },
         { "url": "https://cli.github.com/*" },
         { "url": "https://antigravity.google/*" },
+        { "url": "https://cursor.com/*" },
         { "url": "https://github.com/devbehkame/usagecheck*" }
       ]
     }

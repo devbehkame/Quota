@@ -172,6 +172,7 @@ function emptyState(): HTMLElement {
       quickAdd("copilot", "GitHub Copilot", d.copilotNeedsSignIn ? "Copilot found (sign in once with GitHub)" : "Copilot found"),
     );
   if (d.antigravity) quick.push(quickAdd("antigravity", "Antigravity", "Antigravity found"));
+  if (d.cursor) quick.push(quickAdd("cursor", "Cursor", d.cursorNeedsSignIn ? "Cursor found (run cursor-agent login once)" : "Cursor found"));
   return h(
     "main",
     { class: "empty" },
@@ -435,7 +436,8 @@ function openAccountDialog(existing?: Account) {
             (p.kind === "claude_plan" && detected.claude) ||
             (p.kind === "codex_plan" && detected.codex) ||
             (p.kind === "copilot" && detected.copilot) ||
-            (p.kind === "antigravity" && detected.antigravity);
+            (p.kind === "antigravity" && detected.antigravity) ||
+            (p.kind === "cursor" && detected.cursor);
           return h(
             "button",
             { class: "pick", onclick: () => showForm(p) },
@@ -774,7 +776,7 @@ function updateText(u: UpdateStatus): string {
     case "upToDate":
       return `You're on the latest version (${u.currentVersion})${u.checkedAt ? `, checked ${ago(u.checkedAt)}` : ""}.`;
     case "available":
-      return `Version ${u.newVersion} is available.`;
+      return `Version ${u.newVersion} is ready. ${u.message ?? ""}`.trim();
     case "downloading":
       return `Downloading version ${u.newVersion}…`;
     case "installing":
@@ -825,7 +827,7 @@ async function updateSettings(s: Settings, save: () => Promise<void>): Promise<H
     h(
       "div",
       { class: "settings" },
-      settingRow("Install updates automatically", "Checks GitHub every 5 minutes and installs new versions.", auto),
+      settingRow("Install updates automatically", "Checks every 5 minutes and updates silently in the background.", auto),
       h(
         "div",
         { class: "setting" },
@@ -840,50 +842,82 @@ async function updateSettings(s: Settings, save: () => Promise<void>): Promise<H
 let updateLine: HTMLElement | null = null;
 
 /** "Taskbar widget": on/off, and which two accounts (and gauges) it shows. */
+const MAX_SLOTS = 8;
+
 function widgetSettings(s: Settings, save: () => Promise<void>): HTMLElement {
   const accounts = view!.accounts;
   const slotRows = h("div", { class: "slot-rows" });
 
-  const setSlots = (slots: (WidgetSlot | null)[]) => {
-    s.widget = { ...s.widget, slots: slots.filter((x): x is WidgetSlot => !!x && !!x.accountId) };
+  const setSlots = (slots: WidgetSlot[]) => {
+    s.widget = { ...s.widget, slots: slots.filter((x) => !!x.accountId) };
     void save();
+    drawSlots();
   };
 
   const drawSlots = () => {
-    const current: (WidgetSlot | null)[] = [s.widget.slots[0] ?? null, s.widget.slots[1] ?? null];
+    const current = [...s.widget.slots];
+    const rows = current.map((slot, i) => {
+      const acc = h(
+        "select",
+        { class: "input", "aria-label": `Slot ${i + 1} account` },
+        ...accounts.map((a) => h("option", { value: a.id, selected: slot.accountId === a.id }, a.label)),
+      );
+      const labels = (snaps.get(slot.accountId)?.usage?.meters ?? []).map((m) => m.label);
+      if (slot.meter && !labels.includes(slot.meter)) labels.push(slot.meter);
+      const meter = h(
+        "select",
+        { class: "input", "aria-label": `Slot ${i + 1} gauge` },
+        h("option", { value: "", selected: !slot.meter }, "Tightest limit"),
+        ...labels.map((l) => h("option", { value: l, selected: slot.meter === l }, l)),
+      );
+      acc.addEventListener("change", () => {
+        current[i] = { accountId: acc.value, meter: null };
+        setSlots(current);
+      });
+      meter.addEventListener("change", () => {
+        current[i] = { ...current[i]!, meter: meter.value || null };
+        setSlots(current);
+      });
+      const remove = h(
+        "button",
+        { class: "icon-btn ghost small", type: "button", "aria-label": `Remove slot ${i + 1}`, title: "Remove" },
+        icon("close", 16),
+      );
+      remove.addEventListener("click", () => setSlots(current.filter((_, j) => j !== i)));
+      return h(
+        "div",
+        { class: "setting" },
+        h("div", null, h("div", { class: "setting-title" }, `Slot ${i + 1}`)),
+        h("div", { class: "slot-pickers" }, acc, meter, remove),
+      );
+    });
+
+    const canAdd = accounts.length > 0 && current.length < MAX_SLOTS;
+    const add = h(
+      "button",
+      { class: "btn small", type: "button", disabled: !canAdd },
+      icon("plus", 14),
+      "Add slot",
+    );
+    add.addEventListener("click", () => {
+      // Suggest the first account not shown yet.
+      const used = new Set(current.map((x) => x.accountId));
+      const next = accounts.find((a) => !used.has(a.id)) ?? accounts[0];
+      if (next) setSlots([...current, { accountId: next.id, meter: null }]);
+    });
     slotRows.replaceChildren(
-      ...current.map((slot, i) => {
-        const acc = h(
-          "select",
-          { class: "input", "aria-label": `Slot ${i + 1} account` },
-          h("option", { value: "", selected: !slot }, "Nothing"),
-          ...accounts.map((a) => h("option", { value: a.id, selected: slot?.accountId === a.id }, a.label)),
-        );
-        const labels = slot ? (snaps.get(slot.accountId)?.usage?.meters ?? []).map((m) => m.label) : [];
-        if (slot?.meter && !labels.includes(slot.meter)) labels.push(slot.meter);
-        const meter = h(
-          "select",
-          { class: "input", "aria-label": `Slot ${i + 1} gauge`, disabled: !slot },
-          h("option", { value: "", selected: !slot?.meter }, "Tightest limit"),
-          ...labels.map((l) => h("option", { value: l, selected: slot?.meter === l }, l)),
-        );
-        acc.addEventListener("change", () => {
-          current[i] = acc.value ? { accountId: acc.value, meter: null } : null;
-          setSlots(current);
-          drawSlots();
-        });
-        meter.addEventListener("change", () => {
-          if (!current[i]) return;
-          current[i] = { ...current[i]!, meter: meter.value || null };
-          setSlots(current);
-        });
-        return h(
+      ...rows,
+      h(
+        "div",
+        { class: "setting" },
+        h(
           "div",
-          { class: "setting" },
-          h("div", null, h("div", { class: "setting-title" }, `Slot ${i + 1}`)),
-          h("div", { class: "slot-pickers" }, acc, meter),
-        );
-      }),
+          null,
+          h("div", { class: "setting-title" }, current.length ? `${current.length} shown` : "Nothing shown yet"),
+          h("small", { class: "hint" }, `Show as many as you like (up to ${MAX_SLOTS}). The same account can appear twice with different gauges.`),
+        ),
+        add,
+      ),
     );
   };
 
@@ -908,7 +942,7 @@ function widgetSettings(s: Settings, save: () => Promise<void>): HTMLElement {
       { class: "settings" },
       settingRow(
         "Show on the taskbar",
-        "Up to two accounts next to the clock: icon and how much is left. Drag it to move it; click it to open UsageCheck.",
+        "Your chosen accounts next to the clock: icon and how much is left. Hover for details, drag to move, click to open UsageCheck.",
         enabled,
       ),
       slotRows,
@@ -990,7 +1024,6 @@ async function boot() {
   });
   await listen<UpdateStatus>("update-status", (e) => {
     if (updateLine?.isConnected) updateLine.textContent = updateText(e.payload);
-    if (e.payload.state === "downloading") toast(`Updating UsageCheck to version ${e.payload.newVersion}…`);
   });
   await listen<Settings>("settings-changed", (e) => {
     if (!view) return;

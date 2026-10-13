@@ -8,7 +8,8 @@ export type ProviderKind =
   | "openrouter"
   | "deepseek"
   | "copilot"
-  | "antigravity";
+  | "antigravity"
+  | "cursor";
 
 export type Unit = "percent" | "usd" | "cny" | "count";
 
@@ -76,7 +77,15 @@ export interface AppView {
   accounts: Account[];
   settings: Settings;
   snapshots: Snapshot[];
-  detected: { claude: boolean; codex: boolean; copilot: boolean; copilotNeedsSignIn: boolean; antigravity: boolean };
+  detected: {
+    claude: boolean;
+    codex: boolean;
+    copilot: boolean;
+    copilotNeedsSignIn: boolean;
+    antigravity: boolean;
+    cursor: boolean;
+    cursorNeedsSignIn: boolean;
+  };
   version: string;
 }
 

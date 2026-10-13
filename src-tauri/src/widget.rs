@@ -16,7 +16,6 @@ use tauri::{
 use usage_core::{ProviderKind, Snapshot};
 
 use crate::commands::AppState;
-use crate::config::MAX_WIDGET_SLOTS;
 use crate::tray;
 
 pub const LABEL: &str = "widget";
@@ -150,7 +149,7 @@ pub struct WidgetView {
     light_taskbar: bool,
 }
 
-/// What the widget should show. With no slots chosen, it shows the first two accounts.
+/// What the widget should show: exactly the slots chosen in Settings.
 #[tauri::command]
 pub fn widget_state(app: AppHandle) -> WidgetView {
     let state = app.state::<AppState>();
@@ -167,15 +166,7 @@ pub fn widget_state(app: AppHandle) -> WidgetView {
                 Some(WidgetItem { account_id: a.id.clone(), kind: a.kind, label: a.label.clone(), meter: s.meter.clone() })
             })
             .collect();
-        if chosen.is_empty() {
-            cfg.accounts
-                .iter()
-                .take(MAX_WIDGET_SLOTS)
-                .map(|a| WidgetItem { account_id: a.id.clone(), kind: a.kind, label: a.label.clone(), meter: None })
-                .collect()
-        } else {
-            chosen
-        }
+        chosen
     };
     let snapshots = {
         let snaps = state.snapshots.lock().unwrap();

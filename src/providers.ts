@@ -124,6 +124,20 @@ export const PROVIDERS: ProviderInfo[] = [
       "Reads the quotas Antigravity itself shows: from the Antigravity app or editor extension while it's open, or from the Antigravity CLI's own usage report (`agy`). No Google sign-in is read or sent anywhere by UsageCheck.",
     link: { text: "Get Antigravity", url: "https://antigravity.google/" },
   },
+  {
+    kind: "cursor",
+    name: "Cursor",
+    tagline: "Plan usage · on-demand spend",
+    color: "#14120b",
+    glyph: "Cu",
+    secret: "optional",
+    secretLabel: "cursor.com session cookie",
+    secretPlaceholder: "Leave empty to use the Cursor CLI sign-in",
+    folder: { label: "Cursor CLI config folder", placeholder: "Default: %APPDATA%\\cursor" },
+    help:
+      "Uses the Cursor CLI's sign-in: run `cursor-agent login` once. Or, under Advanced, paste the value of your WorkosCursorSessionToken cookie from cursor.com (browser DevTools → Application → Cookies). The Cursor editor's own storage isn't read. Only sent to cursor.com.",
+    link: { text: "Open the Cursor dashboard", url: "https://cursor.com/dashboard" },
+  },
 ];
 
 export function provider(kind: ProviderKind): ProviderInfo {

@@ -35,7 +35,7 @@ impl Default for Settings {
 #[serde(rename_all = "camelCase", default)]
 pub struct WidgetSettings {
     pub enabled: bool,
-    /// Up to two accounts to show, in order.
+    /// The accounts (and gauges) to show, in order. Any number up to MAX_WIDGET_SLOTS.
     pub slots: Vec<WidgetSlot>,
 }
 
@@ -48,7 +48,8 @@ pub struct WidgetSlot {
     pub meter: Option<String>,
 }
 
-pub const MAX_WIDGET_SLOTS: usize = 2;
+/// Plenty for a taskbar; each slot is about 70 px wide.
+pub const MAX_WIDGET_SLOTS: usize = 8;
 
 impl Settings {
     pub fn sanitized(mut self) -> Self {

@@ -1,10 +1,13 @@
 //! Self-updating: every 5 minutes, check the latest GitHub release and, when a
-//! newer signed version exists, download and install it. Updates are verified
-//! against the public key built into the app, so only builds signed with the
-//! project's private key (kept in GitHub Actions secrets) can be installed.
+//! newer signed version exists, download and install it silently (no installer
+//! window), then restart. Updates are verified against the public key built
+//! into the app, so only builds signed with the project's private key (kept in
+//! GitHub Actions secrets) can be installed. An update never interrupts someone
+//! using the window: it waits (up to an hour) until the window is closed or
+//! in the background, and restarts into the tray if that's where the app was.
 
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -15,6 +18,8 @@ use crate::commands::AppState;
 
 const EVERY: Duration = Duration::from_secs(5 * 60);
 const FIRST_CHECK_AFTER: Duration = Duration::from_secs(20);
+/// How long an automatic install may wait for the user to stop using the window.
+const MAX_DEFER: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Serialize, Clone, Default, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +36,8 @@ pub struct UpdateStatus {
 pub struct UpdaterState {
     status: Mutex<UpdateStatus>,
     busy: tokio::sync::Mutex<()>,
+    /// When an automatic install was first postponed because the window was in use.
+    deferred_since: Mutex<Option<Instant>>,
 }
 
 fn set(app: &AppHandle, f: impl FnOnce(&mut UpdateStatus)) {
@@ -61,15 +68,26 @@ pub fn spawn(app: AppHandle) {
         tokio::time::sleep(FIRST_CHECK_AFTER).await;
         loop {
             if auto_update_on(&app) {
-                check(&app, true).await;
+                check(&app, true, true).await;
             }
             tokio::time::sleep(EVERY).await;
         }
     });
 }
 
-/// Checks for a newer release; installs it when `install` is true.
-pub async fn check(app: &AppHandle, install: bool) -> UpdateStatus {
+fn window_in_use(app: &AppHandle) -> bool {
+    app.get_webview_window("main")
+        .map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
+        .unwrap_or(false)
+}
+
+fn window_hidden(app: &AppHandle) -> bool {
+    app.get_webview_window("main").map(|w| !w.is_visible().unwrap_or(true)).unwrap_or(true)
+}
+
+/// Checks for a newer release; installs it when `install` is true. Automatic
+/// installs wait while the window is being used.
+pub async fn check(app: &AppHandle, install: bool, automatic: bool) -> UpdateStatus {
     let st = app.state::<UpdaterState>();
     let Ok(_guard) = st.busy.try_lock() else {
         return st.status.lock().unwrap().clone();
@@ -79,7 +97,10 @@ pub async fn check(app: &AppHandle, install: bool) -> UpdateStatus {
         s.message = None;
     });
 
-    let found = match app.updater() {
+    // Restart into the tray if the app was only in the tray when it updated.
+    let builder = app.updater_builder();
+    let builder = if window_hidden(app) { builder.installer_args(["--minimized"]) } else { builder };
+    let found = match builder.build() {
         Ok(u) => u.check().await,
         Err(e) => Err(e),
     };
@@ -114,15 +135,33 @@ pub async fn check(app: &AppHandle, install: bool) -> UpdateStatus {
         return current(app);
     }
 
+    if automatic && window_in_use(app) {
+        let waited = {
+            let mut d = st.deferred_since.lock().unwrap();
+            d.get_or_insert_with(Instant::now).elapsed()
+        };
+        if waited < MAX_DEFER {
+            set(app, |s| {
+                s.state = "available";
+                s.new_version = Some(version);
+                s.message = Some("Installs automatically once you're done with this window.".into());
+                s.checked_at = Some(Utc::now());
+            });
+            return current(app);
+        }
+    }
+    *st.deferred_since.lock().unwrap() = None;
+
     set(app, |s| {
         s.state = "downloading";
         s.new_version = Some(version.clone());
+        s.message = None;
         s.checked_at = Some(Utc::now());
     });
     match update.download_and_install(|_, _| {}, || {}).await {
         Ok(()) => {
-            // On Windows the installer has already taken over and closes the app;
-            // elsewhere, restart into the new version.
+            // On Windows the silent installer has taken over: it closes the app,
+            // installs, and starts the new version. Elsewhere, restart ourselves.
             set(app, |s| s.state = "installing");
             app.restart();
         }
@@ -169,5 +208,5 @@ pub async fn check_for_updates(app: AppHandle) -> UpdateStatus {
         });
         return current(&app);
     }
-    check(&app, true).await
+    check(&app, true, false).await
 }

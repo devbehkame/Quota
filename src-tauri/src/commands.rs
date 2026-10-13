@@ -93,6 +93,7 @@ fn default_label(kind: ProviderKind) -> &'static str {
         ProviderKind::Deepseek => "DeepSeek",
         ProviderKind::Copilot => "GitHub Copilot",
         ProviderKind::Antigravity => "Antigravity",
+        ProviderKind::Cursor => "Cursor",
     }
 }
 

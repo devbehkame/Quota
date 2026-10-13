@@ -17,6 +17,7 @@ The taskbar widget, next to the clock:
 | **OpenRouter** | Credits left | API key (a management key shows the whole account) |
 | **DeepSeek** | Prepaid balance | API key |
 | **GitHub Copilot** | Premium requests left this month (plus chat and completions on Free), with the reset date | Reuses the GitHub sign-in from Copilot for JetBrains / Visual Studio / Vim or the [GitHub CLI](https://cli.github.com/) (`gh auth login`). You can also paste a token. |
+| **Cursor** | Included plan usage this billing cycle (overall, Auto, named models) and on-demand spend, with the reset date | Reuses the [Cursor CLI](https://cursor.com/cli) sign-in (`cursor-agent login`), or a cursor.com session cookie you paste. The Cursor editor's own storage isn't read. |
 | **Antigravity** | Quota left for each model group, with reset times, plus prompt credits | Reads the quota from [Antigravity](https://antigravity.google/) while it's running on your PC. Nothing to paste, and nothing leaves your computer. |
 
 > **Why the ChatGPT and Claude plans work this way:** neither OpenAI nor Anthropic offers a public API for consumer plan limits. UsageCheck calls the same usage endpoints their own command-line tools use (Claude Code's `/usage`, Codex's `/status`). These endpoints are undocumented, so either company could change them at any time.
@@ -41,7 +42,7 @@ To see your plan limits:
 
 ## Automatic updates
 
-Every push to the default branch builds a new version (`0.1.<build number>`), signs it and publishes it as a GitHub Release. The app checks every 5 minutes and installs new versions by itself. You can turn this off, or click **Check now**, in Settings → Updates. An update is only installed if its signature matches the public key built into the app.
+Every push to the default branch builds a new version (`0.1.<build number>`), signs it and publishes it as a GitHub Release. The app checks every 5 minutes and updates itself silently: there's no prompt or installer window. If you're using the UsageCheck window at that moment, it waits (up to an hour) until you're done, then installs and restarts. If it was in the tray, it restarts in the tray. You can turn this off, or click **Check now**, in Settings → Updates. An update is only installed if its signature matches the public key built into the app.
 
 One-time setup in the GitHub repository (**Settings → Secrets and variables → Actions**):
 
@@ -72,7 +73,7 @@ Until the signing secrets exist, builds still run and produce installers, but no
 - Reset countdowns ("Resets in 2h 18m"). Hover one for the exact time.
 - Requests are paced so providers aren't hammered. Automatic checks never ask one account more than once a minute, a repeat **Refresh** click within 20 seconds reuses the last result, and if a provider says "too many requests", UsageCheck keeps showing the last numbers and waits 5 minutes (doubling up to 30) before asking again.
 - Auto-refresh (off, or every 1–60 min) runs in the background, so the tray and taskbar widget stay current even when the window is closed to the tray. There's also a refresh of anything older than a minute when you bring the window back. Ctrl+R / F5 refreshes now.
-- **Taskbar widget:** two accounts sit on the taskbar next to the clock, each as its icon plus how much is left (e.g. `C 65%  G 88%`), coloured green, amber or red. In Settings → Taskbar widget, pick which two accounts to show, and for each one either its tightest limit or a specific gauge (e.g. Claude's weekly limit). It sits in free taskbar space next to the clock and moves aside so it never covers your app buttons; if the taskbar is full, it floats just above the clock. Click it to open UsageCheck, or drag it anywhere; "Dock to clock" puts it back. It hides while a full-screen app or game is in front, follows the taskbar's light or dark colour, and can also be toggled from the tray menu.
+- **Taskbar widget:** your chosen accounts sit on the taskbar next to the clock, each as its icon plus how much is left (e.g. `C 65%  G 88%`), coloured green, amber or red. In Settings → Taskbar widget, add as many slots as you like (up to 8) and pick an account for each, showing either its tightest limit or a specific gauge. The same account can appear twice (e.g. Claude's weekly limit). It sits in free taskbar space next to the clock and moves aside so it never covers your app buttons; if the taskbar is full, it floats just above the clock. Click it to open UsageCheck, or drag it anywhere; "Dock to clock" puts it back. It hides while a full-screen app or game is in front, follows the taskbar's light or dark colour, and can also be toggled from the tray menu.
 - **Hover card:** rest the pointer on a widget item to see that account's full card, with every limit, its reset time and notes, just like in the app.
 - Tray icon: hover it to see each account's tightest limit; right-click it to refresh, toggle the taskbar widget, or quit.
 - Optional start with Windows (launches minimized to the tray).

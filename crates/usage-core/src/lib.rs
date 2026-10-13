@@ -45,6 +45,7 @@ pub async fn fetch(
         ProviderKind::Deepseek => providers::deepseek::fetch(client, need()?).await,
         ProviderKind::Copilot => providers::copilot::fetch(client, account, secret).await,
         ProviderKind::Antigravity => providers::antigravity::fetch().await,
+        ProviderKind::Cursor => providers::cursor::fetch(client, account, secret).await,
     }
 }
 
@@ -58,6 +59,9 @@ pub struct LocalDetection {
     /// Copilot is installed but still needs a one-time GitHub sign-in for UsageCheck.
     pub copilot_needs_sign_in: bool,
     pub antigravity: bool,
+    pub cursor: bool,
+    /// Cursor is installed but has no CLI login (a pasted cookie works too).
+    pub cursor_needs_sign_in: bool,
 }
 
 pub fn detect_local() -> LocalDetection {
@@ -68,5 +72,7 @@ pub fn detect_local() -> LocalDetection {
         copilot: providers::copilot::detected(),
         copilot_needs_sign_in: providers::copilot::needs_sign_in(),
         antigravity: providers::antigravity::detected(),
+        cursor: providers::cursor::detected(),
+        cursor_needs_sign_in: providers::cursor::needs_sign_in(),
     }
 }

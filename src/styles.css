@@ -1132,9 +1132,13 @@ select.input {
   min-width: 0;
 }
 
+.slot-pickers {
+  align-items: center;
+}
+
 .slot-pickers select.input {
   min-width: 0;
-  width: 150px;
+  width: 132px;
 }
 
 .segmented {

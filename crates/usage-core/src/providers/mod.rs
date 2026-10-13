@@ -3,6 +3,7 @@ pub mod antigravity;
 pub mod claude_plan;
 pub mod codex_plan;
 pub mod copilot;
+pub mod cursor;
 pub mod deepseek;
 pub mod openai_api;
 pub mod openrouter;

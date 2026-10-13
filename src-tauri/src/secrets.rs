@@ -41,7 +41,7 @@ pub fn validate(secret: &str) -> Result<&str, String> {
     if s.is_empty() {
         return Err("The key is empty.".into());
     }
-    if s.len() > 1024 {
+    if s.len() > 8192 {
         return Err("That key is too long to be valid.".into());
     }
     if !s.chars().all(|c| c.is_ascii_graphic()) {

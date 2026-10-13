@@ -21,6 +21,8 @@ pub enum ProviderKind {
     Copilot,
     /// Google Antigravity per-model quotas, read from the running IDE.
     Antigravity,
+    /// Cursor plan usage and on-demand spend.
+    Cursor,
 }
 
 impl ProviderKind {
@@ -28,7 +30,11 @@ impl ProviderKind {
     pub fn requires_secret(self) -> bool {
         !matches!(
             self,
-            ProviderKind::ClaudePlan | ProviderKind::CodexPlan | ProviderKind::Copilot | ProviderKind::Antigravity
+            ProviderKind::ClaudePlan
+                | ProviderKind::CodexPlan
+                | ProviderKind::Copilot
+                | ProviderKind::Antigravity
+                | ProviderKind::Cursor
         )
     }
 
@@ -39,7 +45,7 @@ impl ProviderKind {
 
     /// Whether the account reads a local app's folder (which can be overridden).
     pub fn uses_local_folder(self) -> bool {
-        matches!(self, ProviderKind::ClaudePlan | ProviderKind::CodexPlan | ProviderKind::Copilot)
+        matches!(self, ProviderKind::ClaudePlan | ProviderKind::CodexPlan | ProviderKind::Copilot | ProviderKind::Cursor)
     }
 }
 

@@ -69,7 +69,7 @@ function render() {
   if (!view) return;
   document.documentElement.classList.toggle("light", view.lightTaskbar);
   root.replaceChildren(
-    ...(view.items.length ? view.items.map(item) : [h("span", { class: "empty" }, "UsageCheck: add an account")]),
+    ...(view.items.length ? view.items.map(item) : [h("span", { class: "empty" }, "UsageCheck: pick accounts in Settings")]),
   );
   // Tell the backend how big we are so it can size and dock the window.
   const r = root.getBoundingClientRect();
