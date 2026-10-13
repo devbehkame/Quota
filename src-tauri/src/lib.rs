@@ -1,8 +1,10 @@
 mod commands;
 mod config;
+mod hovercard;
 mod refresh;
 mod secrets;
 mod tray;
+mod updater;
 mod widget;
 
 use std::collections::HashMap;
@@ -24,6 +26,7 @@ pub fn run() {
             Some(vec![MINIMIZED_ARG]),
         ))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("config.json");
             let cfg = config::load(&config_path);
@@ -35,9 +38,12 @@ pub fn run() {
                 locks: Default::default(),
             });
             app.manage(widget::WidgetState::default());
+            app.manage(hovercard::CardState::default());
+            app.manage(updater::UpdaterState::default());
             tray::create(app.handle())?;
             refresh::spawn_scheduler(app.handle().clone());
             widget::sync(app.handle());
+            updater::spawn(app.handle().clone());
 
             // The window starts hidden to avoid a white flash; show it unless we were
             // launched at login with --minimized.
@@ -71,10 +77,18 @@ pub fn run() {
             commands::save_settings,
             commands::hide_window,
             commands::quit_app,
+            commands::github_sign_in,
+            updater::update_status,
+            updater::check_for_updates,
             widget::widget_state,
             widget::widget_layout,
             widget::widget_open_main,
             widget::widget_reset_position,
+            hovercard::widget_hover,
+            hovercard::widget_unhover,
+            hovercard::card_hover,
+            hovercard::card_layout,
+            hovercard::card_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running UsageCheck");

@@ -110,7 +110,7 @@ export const PROVIDERS: ProviderInfo[] = [
     },
     folder: { label: "Copilot config folder", placeholder: "Default: %LOCALAPPDATA%\\github-copilot" },
     help:
-      "Uses the sign-in from Copilot in JetBrains, Visual Studio or Vim, or the GitHub CLI (`gh auth login`). You can also paste a token from `gh auth token`. Only read, and only sent to GitHub.",
+      "Using Copilot in VS Code? VS Code keeps its GitHub sign-in in its own protected storage, which UsageCheck doesn't read, so sign in once below with the GitHub CLI using the same GitHub account. Copilot in JetBrains, Visual Studio or Vim works automatically. Tokens are only read, and only sent to GitHub.",
     link: { text: "Get the GitHub CLI", url: "https://cli.github.com/" },
   },
   {
@@ -121,7 +121,7 @@ export const PROVIDERS: ProviderInfo[] = [
     glyph: "Ag",
     secret: "none",
     help:
-      "Reads the quotas Antigravity itself shows, from the app running on this PC. Nothing is sent over the internet and no Google sign-in is touched. Antigravity must be open to update; otherwise the last values stay on screen.",
+      "Reads the quotas Antigravity itself shows, from Antigravity running on this PC (the app, or the editor it's installed in). Nothing is sent over the internet and no Google sign-in is touched. It updates while Antigravity is open; otherwise the last values stay on screen.",
     link: { text: "Get Antigravity", url: "https://antigravity.google/" },
   },
 ];

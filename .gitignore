@@ -4,3 +4,4 @@ target/
 src-tauri/gen/
 *.log
 .DS_Store
+src-tauri/tauri.ci.json

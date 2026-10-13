@@ -50,6 +50,15 @@ export interface Settings {
   closeToTray: boolean;
   theme: "system" | "light" | "dark";
   widget: WidgetSettings;
+  autoUpdate: boolean;
+}
+
+export interface UpdateStatus {
+  state: "idle" | "checking" | "upToDate" | "available" | "downloading" | "installing" | "error";
+  currentVersion: string;
+  newVersion: string | null;
+  message: string | null;
+  checkedAt: string | null;
 }
 
 export interface WidgetSlot {
@@ -67,7 +76,7 @@ export interface AppView {
   accounts: Account[];
   settings: Settings;
   snapshots: Snapshot[];
-  detected: { claude: boolean; codex: boolean; copilot: boolean; antigravity: boolean };
+  detected: { claude: boolean; codex: boolean; copilot: boolean; copilotNeedsSignIn: boolean; antigravity: boolean };
   version: string;
 }
 
@@ -93,6 +102,9 @@ export const api = {
     invoke<Snapshot>("test_account", { input, existingId }),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   quit: () => invoke<void>("quit_app"),
+  githubSignIn: () => invoke<void>("github_sign_in"),
+  updateStatus: () => invoke<UpdateStatus>("update_status"),
+  checkForUpdates: () => invoke<UpdateStatus>("check_for_updates"),
 };
 
 export function errorText(e: unknown): string {

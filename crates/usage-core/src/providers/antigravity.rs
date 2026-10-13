@@ -30,8 +30,15 @@ struct Server {
 /// The last server that answered, so later refreshes skip discovery.
 static LAST: Mutex<Option<Server>> = Mutex::new(None);
 
+/// Antigravity is installed (as the app or as an editor extension) or running.
 pub fn detected() -> bool {
-    !find_processes().is_empty()
+    installed() || !find_processes().is_empty()
+}
+
+fn installed() -> bool {
+    let local = dirs::data_local_dir().map(|d| d.join("Programs").join("Antigravity"));
+    let home = dirs::home_dir().map(|d| d.join(".antigravity"));
+    [local, home].into_iter().flatten().any(|p| p.is_dir()) || super::editor_extension_installed("antigravity")
 }
 
 pub async fn fetch() -> Result<Usage, UsageError> {
@@ -47,7 +54,7 @@ pub async fn fetch() -> Result<Usage, UsageError> {
     let procs = find_processes();
     if procs.is_empty() {
         return Err(UsageError::Offline(
-            "Antigravity isn't running. Open it to update these numbers.".into(),
+            "Antigravity isn't running. Open Antigravity (or the editor it's installed in) to update these numbers.".into(),
         ));
     }
     for (pid, csrf, hint_port) in procs {
@@ -112,16 +119,20 @@ fn find_processes() -> Vec<(u32, String, Option<u16>)> {
     sys.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always).with_exe(UpdateKind::Always),
     );
     sys.processes()
         .iter()
         .filter_map(|(pid, p)| {
             let name = p.name().to_string_lossy().to_ascii_lowercase();
-            if !name.starts_with("language_server") {
+            if !name.contains("language_server") {
                 return None;
             }
-            let args: Vec<String> = p.cmd().iter().map(|a| a.to_string_lossy().into_owned()).collect();
+            let mut args: Vec<String> = p.cmd().iter().map(|a| a.to_string_lossy().into_owned()).collect();
+            // When Antigravity runs inside another editor, its install path still names it.
+            if let Some(exe) = p.exe() {
+                args.push(exe.to_string_lossy().into_owned());
+            }
             let (csrf, port) = parse_args(&args)?;
             Some((pid.as_u32(), csrf, port))
         })

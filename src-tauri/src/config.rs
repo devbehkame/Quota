@@ -14,11 +14,19 @@ pub struct Settings {
     /// "system", "light" or "dark".
     pub theme: String,
     pub widget: WidgetSettings,
+    /// Download and install new versions automatically.
+    pub auto_update: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { refresh_minutes: 5, close_to_tray: true, theme: "system".into(), widget: WidgetSettings::default() }
+        Settings {
+            refresh_minutes: 5,
+            close_to_tray: true,
+            theme: "system".into(),
+            widget: WidgetSettings::default(),
+            auto_update: true,
+        }
     }
 }
 

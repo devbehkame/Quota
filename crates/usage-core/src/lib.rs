@@ -55,6 +55,8 @@ pub struct LocalDetection {
     pub claude: bool,
     pub codex: bool,
     pub copilot: bool,
+    /// Copilot is installed but still needs a one-time GitHub sign-in for UsageCheck.
+    pub copilot_needs_sign_in: bool,
     pub antigravity: bool,
 }
 
@@ -64,6 +66,7 @@ pub fn detect_local() -> LocalDetection {
         codex: providers::codex_plan::auth_path(None).is_some_and(|p| p.is_file())
             || providers::codex_plan::sessions_dir(None).is_some_and(|p| p.is_dir()),
         copilot: providers::copilot::detected(),
+        copilot_needs_sign_in: providers::copilot::needs_sign_in(),
         antigravity: providers::antigravity::detected(),
     }
 }

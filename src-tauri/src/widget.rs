@@ -58,6 +58,7 @@ pub fn sync(app: &AppHandle) {
                 }
             }
             (false, Some(w)) => {
+                crate::hovercard::destroy(&app);
                 let _ = w.destroy();
             }
             _ => notify(&app),
@@ -85,9 +86,10 @@ fn create(app: &AppHandle) -> tauri::Result<()> {
         .focused(false)
         .visible(false)
         .build()?;
-    #[cfg(windows)]
-    win::make_tool_window(&w);
-    let _ = w;
+    make_tool_window(&w);
+    if let Err(e) = crate::hovercard::create(app) {
+        eprintln!("could not create the widget's hover card: {e}");
+    }
     spawn_keeper(app.clone());
 
     // The page normally shows the window once it has measured itself; if that
@@ -104,6 +106,12 @@ fn create(app: &AppHandle) -> tauri::Result<()> {
         }
     });
     Ok(())
+}
+
+/// No Alt+Tab entry, and clicking it never takes focus from what you're doing.
+pub fn make_tool_window(_w: &WebviewWindow) {
+    #[cfg(windows)]
+    win::make_tool_window(_w);
 }
 
 /// Called by the widget page once it knows how big its content is.
@@ -323,6 +331,7 @@ fn keep(app: &AppHandle, w: &WebviewWindow, last_bar: &mut Option<Rect>) {
     if win::fullscreen_app_active(hwnd) {
         if !ws.hidden_for_fullscreen.swap(true, Ordering::Relaxed) {
             let _ = w.hide();
+            crate::hovercard::hide_now(app);
         }
         return;
     }

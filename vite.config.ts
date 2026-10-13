@@ -9,7 +9,7 @@ export default defineConfig({
     minify: "esbuild",
     sourcemap: false,
     rollupOptions: {
-      input: { main: resolve(__dirname, "index.html"), widget: resolve(__dirname, "widget.html") },
+      input: { main: resolve(__dirname, "index.html"), widget: resolve(__dirname, "widget.html"), card: resolve(__dirname, "card.html") },
     },
   },
 });

@@ -57,7 +57,7 @@ pub struct AppView {
     settings: Settings,
     snapshots: Vec<Snapshot>,
     detected: LocalDetection,
-    version: &'static str,
+    version: String,
 }
 
 #[derive(Deserialize)]
@@ -141,7 +141,7 @@ pub async fn get_state(app: AppHandle) -> AppView {
         settings,
         snapshots,
         detected: usage_core::detect_local(),
-        version: env!("CARGO_PKG_VERSION"),
+        version: app.package_info().version.to_string(),
     }
 }
 
@@ -299,4 +299,38 @@ pub fn hide_window(app: AppHandle) {
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
     app.exit(0);
+}
+
+/// Opens the official GitHub CLI sign-in (`gh auth login --web`) in its own console
+/// window. Used for Copilot in VS Code, whose own sign-in UsageCheck doesn't read.
+#[tauri::command]
+pub async fn github_sign_in() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+        let installed = std::process::Command::new("gh")
+            .arg("--version")
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !installed {
+            return Err(
+                "The GitHub CLI isn't installed. Install it from cli.github.com (or run `winget install GitHub.cli`), then try again."
+                    .into(),
+            );
+        }
+        std::process::Command::new("gh")
+            .args(["auth", "login", "--web", "--hostname", "github.com", "--git-protocol", "https"])
+            .creation_flags(CREATE_NEW_CONSOLE)
+            .spawn()
+            .map_err(|e| format!("Could not start the GitHub sign-in: {e}"))?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Run `gh auth login` in a terminal, then try again.".into())
+    }
 }

@@ -55,8 +55,31 @@ async fn gh_cli_token() -> Option<String> {
     (!t.is_empty() && t.chars().all(|c| c.is_ascii_graphic())).then(|| t.to_owned())
 }
 
+/// The GitHub CLI's login file (`gh auth login`). Only its presence is checked here.
+fn gh_hosts_file() -> Option<PathBuf> {
+    if cfg!(windows) {
+        dirs::config_dir().map(|d| d.join("GitHub CLI").join("hosts.yml"))
+    } else {
+        dirs::home_dir().map(|d| d.join(".config").join("gh").join("hosts.yml"))
+    }
+}
+
+fn gh_signed_in() -> bool {
+    gh_hosts_file()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .is_some_and(|s| s.contains("github.com"))
+}
+
+/// Copilot is installed somewhere on this PC (an editor extension or a plugin sign-in).
 pub fn detected() -> bool {
-    plugin_token(None).is_some()
+    plugin_token(None).is_some() || super::editor_extension_installed("github.copilot") || gh_signed_in()
+}
+
+/// Copilot is installed (e.g. in VS Code) but there is no sign-in UsageCheck can use yet.
+/// VS Code keeps its GitHub sign-in in its own protected storage, which UsageCheck
+/// deliberately does not read; a one-time GitHub CLI sign-in covers it instead.
+pub fn needs_sign_in() -> bool {
+    plugin_token(None).is_none() && !gh_signed_in()
 }
 
 pub async fn fetch(client: &reqwest::Client, account: &Account, pasted: Option<&str>) -> Result<Usage, UsageError> {
@@ -66,7 +89,7 @@ pub async fn fetch(client: &reqwest::Client, account: &Account, pasted: Option<&
             Some(t) => t,
             None => gh_cli_token().await.ok_or_else(|| {
                 UsageError::Setup(
-                    "No GitHub sign-in found. Paste a GitHub token, or sign in with the GitHub CLI (`gh auth login`)."
+                    "No GitHub sign-in UsageCheck can use yet. Copilot in VS Code keeps its sign-in in VS Code's protected storage, which UsageCheck doesn't read. Edit this account and click \"Sign in with GitHub\" once (or paste a token)."
                         .into(),
                 )
             })?,

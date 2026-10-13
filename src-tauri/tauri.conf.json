@@ -42,7 +42,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "publisher": "UsageCheck",
     "category": "Utility",
     "shortDescription": "See how much AI usage you have left",
@@ -55,8 +58,24 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" },
-      "nsis": { "installMode": "currentUser" }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDNUExQjFBNjY4MzIyQ0QKUldUTklvTm1HaHRhZkhQTm05ZlpySkVxVWJKOXRRNG52c2pEb0ljZWczK2VpWmRqYXpaT0xGU0EK",
+      "endpoints": [
+        "https://github.com/devbehkame/usagecheck/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

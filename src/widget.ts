@@ -47,9 +47,9 @@ function item(it: WidgetItem): HTMLElement {
     if (m.resetsAt) tip += ` · resets ${until(m.resetsAt)} (${resetLabel(m.resetsAt)})`;
   }
 
-  return h(
+  const el = h(
     "div",
-    { class: `item ${cls}`, title: tip, "aria-label": tip },
+    { class: `item ${cls}`, "aria-label": tip },
     h("span", { class: "icon", style: { "--accent": p.color } }, logo(it.kind, 13)),
     h(
       "span",
@@ -58,6 +58,11 @@ function item(it: WidgetItem): HTMLElement {
       fill !== null ? h("span", { class: "mini" }, h("span", { style: { width: `${fill}%` } })) : null,
     ),
   );
+  // Hovering shows the full details card above this item.
+  el.addEventListener("mouseenter", () => {
+    void invoke("widget_hover", { accountId: it.accountId, offsetX: el.getBoundingClientRect().left });
+  });
+  return el;
 }
 
 function render() {
@@ -94,6 +99,7 @@ root.addEventListener("mousedown", (e) => {
 window.addEventListener("mousemove", (e) => {
   if (down && Math.hypot(e.screenX - down.x, e.screenY - down.y) > 4) {
     down = null;
+    void invoke("widget_unhover");
     void getCurrentWindow().startDragging();
   }
 });
@@ -102,6 +108,7 @@ window.addEventListener("mouseup", () => {
   down = null;
 });
 document.addEventListener("contextmenu", (e) => e.preventDefault());
+document.documentElement.addEventListener("mouseleave", () => void invoke("widget_unhover"));
 
 async function start() {
   await listen<Snapshot>("snapshot", (e) => {

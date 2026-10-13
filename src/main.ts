@@ -8,14 +8,15 @@ import {
   type Account,
   type AccountInput,
   type AppView,
-  type Meter,
   type ProviderKind,
   type Settings,
   type Snapshot,
+  type UpdateStatus,
   type WidgetSlot,
 } from "./api";
 import { h, icon, logo } from "./dom";
-import { ago, headline, leftPct, level, money, pct, resetLabel, until } from "./format";
+import { ago, headline } from "./format";
+import { meter } from "./meterview";
 import { PROVIDERS, provider, type ProviderInfo } from "./providers";
 
 // ---------------------------------------------------------------- state
@@ -161,8 +162,11 @@ function emptyState(): HTMLElement {
   const quick: HTMLElement[] = [];
   if (d.claude) quick.push(quickAdd("claude_plan", "Claude", "Claude Code sign-in found"));
   if (d.codex) quick.push(quickAdd("codex_plan", "ChatGPT", "Codex CLI sign-in found"));
-  if (d.copilot) quick.push(quickAdd("copilot", "GitHub Copilot", "Copilot sign-in found"));
-  if (d.antigravity) quick.push(quickAdd("antigravity", "Antigravity", "Antigravity is running"));
+  if (d.copilot)
+    quick.push(
+      quickAdd("copilot", "GitHub Copilot", d.copilotNeedsSignIn ? "Copilot found (sign in once with GitHub)" : "Copilot found"),
+    );
+  if (d.antigravity) quick.push(quickAdd("antigravity", "Antigravity", "Antigravity found"));
   return h(
     "main",
     { class: "empty" },
@@ -288,50 +292,6 @@ function card(a: Account): HTMLElement {
         "Refresh",
       ),
     ),
-  );
-}
-
-function meter(m: Meter): HTMLElement {
-  const lvl = level(m);
-  const { value, caption } = headline(m);
-  const left = leftPct(m);
-  let of: string | null = null;
-  if (m.unit === "percent" && m.used !== null) of = `${pct(m.used)} used`;
-  else if (m.limit !== null && m.used !== null) of = `${money(m.unit, m.used)} of ${money(m.unit, m.limit)}`;
-
-  return h(
-    "div",
-    { class: `meter lvl-${lvl}` },
-    h(
-      "div",
-      { class: "meter-top" },
-      h("span", { class: "meter-label" }, m.label),
-      m.resetsAt
-        ? h("span", { class: "meter-reset", title: `Resets ${resetLabel(m.resetsAt)}` }, `Resets ${until(m.resetsAt)}`)
-        : null,
-    ),
-    h(
-      "div",
-      { class: "meter-value" },
-      h("span", { class: "big" }, value),
-      h("span", { class: "cap" }, caption),
-      of ? h("span", { class: "of" }, of) : null,
-    ),
-    left !== null
-      ? h(
-          "div",
-          {
-            class: "bar",
-            role: "progressbar",
-            "aria-valuemin": 0,
-            "aria-valuemax": 100,
-            "aria-valuenow": Math.round(left),
-            "aria-label": `${m.label}: ${pct(left)} left`,
-          },
-          h("div", { class: "fill", style: { width: `${left}%` } }),
-        )
-      : null,
-    m.detail ? h("div", { class: "meter-detail" }, m.detail) : null,
   );
 }
 
@@ -586,6 +546,7 @@ function openAccountDialog(existing?: Account) {
             : null,
         ),
       ),
+      p.kind === "copilot" ? githubSignIn(result) : null,
       field("Display name", "f-name", name),
       p.secret === "required" ? secretField : null,
       p.budget
@@ -630,6 +591,43 @@ function openAccountDialog(existing?: Account) {
 
   if (existing) showForm(provider(existing.kind));
   else showPicker();
+}
+
+/** One-time GitHub CLI sign-in, for Copilot in VS Code. */
+function githubSignIn(result: HTMLElement): HTMLElement {
+  const needs = view!.detected.copilotNeedsSignIn;
+  return h(
+    "div",
+    { class: "signin-row" },
+    h(
+      "div",
+      null,
+      h("strong", null, needs ? "Sign in once with GitHub" : "GitHub sign-in"),
+      h(
+        "small",
+        { class: "hint" },
+        needs
+          ? "Opens GitHub's official sign-in in your browser. Use the same account as Copilot in VS Code."
+          : "Already signed in. Use this to switch GitHub accounts.",
+      ),
+    ),
+    h(
+      "button",
+      {
+        class: `btn small${needs ? " primary" : ""}`,
+        type: "button",
+        onclick: async () => {
+          try {
+            await api.githubSignIn();
+            showResult(result, { ok: null, text: "Finish signing in in the window that opened, then click Test connection." });
+          } catch (e) {
+            showResult(result, { ok: false, text: errorText(e) });
+          }
+        },
+      },
+      "Sign in with GitHub",
+    ),
+  );
 }
 
 function defaultName(p: ProviderInfo): string {
@@ -737,6 +735,7 @@ async function openSettings() {
         settingRow("Start with Windows", "Launch minimized to the tray when you sign in.", autostartToggle),
       ),
       widgetSettings(s, save),
+      await updateSettings(s, save),
       h(
         "div",
         { class: "callout info" },
@@ -760,6 +759,78 @@ async function openSettings() {
     ),
   ]);
 }
+
+function updateText(u: UpdateStatus): string {
+  switch (u.state) {
+    case "checking":
+      return "Checking for updates…";
+    case "upToDate":
+      return `You're on the latest version (${u.currentVersion})${u.checkedAt ? `, checked ${ago(u.checkedAt)}` : ""}.`;
+    case "available":
+      return `Version ${u.newVersion} is available.`;
+    case "downloading":
+      return `Downloading version ${u.newVersion}…`;
+    case "installing":
+      return `Installing version ${u.newVersion}. UsageCheck will restart.`;
+    case "error":
+      return u.message ?? "Couldn't check for updates.";
+    default:
+      return `Version ${u.currentVersion}. Checks every 5 minutes.`;
+  }
+}
+
+/** "Updates": automatic install on/off, status, and a Check now button. */
+async function updateSettings(s: Settings, save: () => Promise<void>): Promise<HTMLElement> {
+  let status: UpdateStatus | null = null;
+  try {
+    status = await api.updateStatus();
+  } catch {
+    /* not available in dev */
+  }
+  const line = h("small", { class: "hint", "aria-live": "polite" }, status ? updateText(status) : "");
+  updateLine = line;
+  const auto = toggle(s.autoUpdate, (v) => {
+    s.autoUpdate = v;
+    void save();
+  });
+  const checkBtn = h(
+    "button",
+    {
+      class: "btn small",
+      type: "button",
+      onclick: async () => {
+        checkBtn.disabled = true;
+        try {
+          line.textContent = updateText(await api.checkForUpdates());
+        } catch (e) {
+          line.textContent = errorText(e);
+        } finally {
+          checkBtn.disabled = false;
+        }
+      },
+    },
+    "Check now",
+  );
+  return h(
+    "div",
+    { class: "settings-group" },
+    h("div", { class: "group-title" }, "Updates"),
+    h(
+      "div",
+      { class: "settings" },
+      settingRow("Install updates automatically", "Checks GitHub every 5 minutes and installs new versions.", auto),
+      h(
+        "div",
+        { class: "setting" },
+        h("div", null, h("div", { class: "setting-title" }, "Status"), line),
+        checkBtn,
+      ),
+    ),
+  );
+}
+
+/** The open Settings dialog's update status line, kept live by "update-status" events. */
+let updateLine: HTMLElement | null = null;
 
 /** "Taskbar widget": on/off, and which two accounts (and gauges) it shows. */
 function widgetSettings(s: Settings, save: () => Promise<void>): HTMLElement {
@@ -918,6 +989,10 @@ async function boot() {
     if (e.payload.busy) busy.add(e.payload.accountId);
     else busy.delete(e.payload.accountId);
     render();
+  });
+  await listen<UpdateStatus>("update-status", (e) => {
+    if (updateLine?.isConnected) updateLine.textContent = updateText(e.payload);
+    if (e.payload.state === "downloading") toast(`Updating UsageCheck to version ${e.payload.newVersion}…`);
   });
   await listen<Settings>("settings-changed", (e) => {
     if (!view) return;

@@ -1,0 +1,56 @@
+/* The widget's hover card: a floating copy of an account card. */
+
+html,
+body {
+  background: transparent !important;
+  overflow: hidden;
+  min-height: 0;
+}
+
+body {
+  padding: 10px;
+}
+
+#app {
+  display: none;
+}
+
+.hovercard {
+  width: 300px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  position: relative;
+  cursor: default;
+}
+
+.hovercard::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--accent);
+}
+
+.hovercard .card-head {
+  padding: 14px 14px 2px;
+}
+
+.hovercard .card-body {
+  padding: 10px 14px 12px;
+  gap: 12px;
+}
+
+.hovercard .big {
+  font-size: 22px;
+}
+
+.hovercard .card-foot {
+  padding: 8px 14px;
+}
+
+.hovercard .card-foot > span:nth-child(2) {
+  flex: 1;
+}

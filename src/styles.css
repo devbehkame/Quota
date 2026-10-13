@@ -188,6 +188,7 @@ h1 {
   border: 1px solid var(--border);
   background: var(--surface);
   font-weight: 560;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, transform 0.05s;
 }
@@ -988,6 +989,22 @@ select.input {
   left: 12px;
   color: var(--muted);
   pointer-events: none;
+}
+
+.signin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.signin-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .advanced {

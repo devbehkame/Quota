@@ -29,13 +29,32 @@ The taskbar widget, next to the clock:
 
 ## Install
 
-1. Open the repository's **Actions** tab, pick the latest green **Build** run, and download the `UsageCheck-windows` artifact. Tagged releases (`v*`) also attach the installers to a GitHub Release.
-2. Run `UsageCheck_x.y.z_x64-setup.exe`. It installs per-user, so no admin rights are needed. Use the `.msi` instead for managed deployment.
-3. Click **Add account**. If Claude Code or Codex is already on your PC, UsageCheck offers to add them in one click.
+1. Download the latest installer, `UsageCheck_x.y.z_x64-setup.exe`, from the repository's **Releases**. Before releases are set up, you can also get it from the newest green **Build** run in the **Actions** tab, as the `UsageCheck-windows` artifact.
+2. Run it. It installs just for you, so no admin rights are needed.
+3. Click **Add account**. Anything found on your PC (Claude Code, Codex, Copilot, Antigravity) is offered in one click.
 
 To see your plan limits:
 - **Claude:** install Claude Code and run `claude` once to sign in. If the token expires, opening Claude Code renews it.
-- **ChatGPT:** install Codex CLI and run `codex login` with your ChatGPT account. The card then updates live on every refresh, with no messages needed. If the sign-in expires, running `codex` once renews it.
+- **ChatGPT:** install Codex CLI and run `codex login` with your ChatGPT account. The card then updates live on every refresh. If the sign-in expires, running `codex` once renews it.
+- **Copilot in VS Code:** VS Code keeps its GitHub sign-in in its own protected storage, which UsageCheck deliberately doesn't read. In the Copilot account, click **Sign in with GitHub** once. This opens GitHub's official CLI sign-in; use the same GitHub account as VS Code. Copilot in JetBrains, Visual Studio or Vim is picked up automatically.
+- **Antigravity:** keep Antigravity open (the app, or the editor it's installed in). Its quotas update while it runs.
+
+## Automatic updates
+
+Every push to the default branch builds a new version (`0.1.<build number>`), signs it and publishes it as a GitHub Release. The app checks every 5 minutes and installs new versions by itself. You can turn this off, or click **Check now**, in Settings → Updates. An update is only installed if its signature matches the public key built into the app.
+
+One-time setup in the GitHub repository (**Settings → Secrets and variables → Actions**):
+
+1. Add the secret **`TAURI_SIGNING_PRIVATE_KEY`** with the contents of the private key file.
+2. Add the secret **`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`** with its password.
+3. Make sure the app can download releases. The installed app downloads updates without logging in to GitHub, so the releases must be public. Choose one:
+   - make this repository public, or
+   - keep it private and publish releases to a separate **public** repository:
+     1. Create it (for example `usagecheck-releases`) with a README so it isn't empty.
+     2. Add a variable **`RELEASE_REPO`** = `devbehkame/usagecheck-releases`.
+     3. Add a secret **`RELEASES_TOKEN`**: a fine-grained personal access token with **Contents: read and write** on that repository.
+
+Until the signing secrets exist, builds still run and produce installers, but no release is published.
 
 ## Security
 
@@ -53,6 +72,7 @@ To see your plan limits:
 - Reset countdowns ("Resets in 2h 18m"). Hover one for the exact time.
 - Auto-refresh (off, or every 1–60 min) runs in the background, so the tray and taskbar widget stay current even when the window is closed to the tray. There's also a refresh of anything older than a minute when you bring the window back. Ctrl+R / F5 refreshes now.
 - **Taskbar widget:** two accounts sit on the taskbar next to the clock, each as its icon plus how much is left (e.g. `C 65%  G 88%`), coloured green, amber or red. In Settings → Taskbar widget, pick which two accounts to show, and for each one either its tightest limit or a specific gauge (e.g. Claude's weekly limit). Click it to open UsageCheck, or drag it anywhere; "Dock to clock" puts it back. It hides while a full-screen app or game is in front, follows the taskbar's light or dark colour, and can also be toggled from the tray menu.
+- **Hover card:** rest the pointer on a widget item to see that account's full card, with every limit, its reset time and notes, just like in the app.
 - Tray icon: hover it to see each account's tightest limit; right-click it to refresh, toggle the taskbar widget, or quit.
 - Optional start with Windows (launches minimized to the tray).
 - Light, dark or system theme.
@@ -65,7 +85,7 @@ Requirements: Rust (stable), Node 20+, and the [Tauri prerequisites](https://v2.
 ```sh
 npm install
 npm run tauri dev       # run with hot reload
-npm run tauri build     # produce installers in target/release/bundle
+npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'   # installers without update signing
 cargo test --workspace  # provider parsing tests
 ```
 

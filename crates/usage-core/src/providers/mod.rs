@@ -19,3 +19,20 @@ pub(crate) fn config_dir(over: Option<&str>, env_var: &str, default_dir: &str) -
     }
     dirs::home_dir().map(|h| h.join(default_dir))
 }
+
+/// Editors that keep extensions under `~/<dir>/extensions` (VS Code and its forks).
+const EDITOR_DIRS: &[&str] = &[".vscode", ".vscode-insiders", ".antigravity", ".cursor", ".windsurf", ".vscode-oss"];
+
+/// Whether an editor extension whose folder name contains `needle` is installed.
+/// Only folder names are looked at; nothing inside the editors is read.
+pub(crate) fn editor_extension_installed(needle: &str) -> bool {
+    let Some(home) = dirs::home_dir() else { return false };
+    let needle = needle.to_ascii_lowercase();
+    EDITOR_DIRS.iter().any(|d| {
+        std::fs::read_dir(home.join(d).join("extensions"))
+            .map(|entries| {
+                entries.flatten().any(|e| e.file_name().to_string_lossy().to_ascii_lowercase().contains(&needle))
+            })
+            .unwrap_or(false)
+    })
+}
