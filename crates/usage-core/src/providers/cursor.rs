@@ -57,7 +57,7 @@ pub async fn fetch(client: &reqwest::Client, account: &Account, pasted: Option<&
         None => {
             let token = agent_token(account.data_path.as_deref()).ok_or_else(|| {
                 UsageError::Setup(
-                    "No Cursor sign-in UsageCheck can use yet. Run `cursor-agent login` once (Cursor CLI), or edit this account and paste your cursor.com session cookie."
+                    "No Cursor sign-in Quota can use yet. Run `cursor-agent login` once (Cursor CLI), or edit this account and paste your cursor.com session cookie."
                         .into(),
                 )
             })?;

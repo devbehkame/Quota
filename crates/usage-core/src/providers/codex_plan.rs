@@ -252,11 +252,7 @@ pub(crate) fn parse_line(line: &str, fallback_time: DateTime<Utc>) -> Option<Fou
     if windows.is_empty() {
         return None;
     }
-    let plan = rl["plan_type"].as_str().map(|p| {
-        let mut c = p.chars();
-        c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
-    });
-    Some(Found { windows, plan, observed_at })
+    Some(Found { windows, plan: plan_name(&rl["plan_type"]), observed_at })
 }
 
 fn find_key<'a>(v: &'a Value, key: &str, depth: u8) -> Option<&'a Value> {
@@ -386,6 +382,7 @@ mod tests {
         });
         let u = parse_live(&v, now).unwrap();
         assert_eq!(u.plan.as_deref(), Some("Pro"));
+        assert_eq!(plan_name(&serde_json::json!("prolite")).as_deref(), Some("Pro Lite"));
         let labels: Vec<_> = u.meters.iter().map(|m| m.label.as_str()).collect();
         assert_eq!(labels, ["Session (5-hour)", "Weekly", "GPT-5-Codex-Spark · Session (5-hour)"]);
         assert_eq!(u.meters[0].remaining, Some(70.0));

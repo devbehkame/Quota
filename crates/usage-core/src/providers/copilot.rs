@@ -75,8 +75,8 @@ pub fn detected() -> bool {
     plugin_token(None).is_some() || super::editor_extension_installed("github.copilot") || gh_signed_in()
 }
 
-/// Copilot is installed (e.g. in VS Code) but there is no sign-in UsageCheck can use yet.
-/// VS Code keeps its GitHub sign-in in its own protected storage, which UsageCheck
+/// Copilot is installed (e.g. in VS Code) but there is no sign-in Quota can use yet.
+/// VS Code keeps its GitHub sign-in in its own protected storage, which Quota
 /// deliberately does not read; a one-time GitHub CLI sign-in covers it instead.
 pub fn needs_sign_in() -> bool {
     plugin_token(None).is_none() && !gh_signed_in()
@@ -89,7 +89,7 @@ pub async fn fetch(client: &reqwest::Client, account: &Account, pasted: Option<&
             Some(t) => t,
             None => gh_cli_token().await.ok_or_else(|| {
                 UsageError::Setup(
-                    "No GitHub sign-in UsageCheck can use yet. Copilot in VS Code keeps its sign-in in VS Code's protected storage, which UsageCheck doesn't read. Edit this account and click \"Sign in with GitHub\" once (or paste a token)."
+                    "No GitHub sign-in Quota can use yet. Copilot in VS Code keeps its sign-in in VS Code's protected storage, which Quota doesn't read. Edit this account and click \"Sign in with GitHub\" once (or paste a token)."
                         .into(),
                 )
             })?,

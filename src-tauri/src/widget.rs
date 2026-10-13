@@ -75,7 +75,7 @@ pub fn notify(app: &AppHandle) {
 
 fn create(app: &AppHandle) -> tauri::Result<()> {
     let w = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("widget.html".into()))
-        .title("UsageCheck widget")
+        .title("Quota widget")
         .inner_size(150.0, 32.0)
         .decorations(false)
         .transparent(true)

@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod hovercard;
 mod refresh;
+mod rename;
 mod secrets;
 mod tray;
 mod updater;
@@ -45,6 +46,7 @@ pub fn run() {
             refresh::spawn_scheduler(app.handle().clone());
             widget::sync(app.handle());
             updater::spawn(app.handle().clone());
+            rename::spawn(app.handle().clone());
 
             // The window starts hidden to avoid a white flash; show it unless we were
             // launched at login with --minimized.
@@ -92,5 +94,5 @@ pub fn run() {
             hovercard::card_state,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running UsageCheck");
+        .expect("error while running Quota");
 }

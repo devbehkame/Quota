@@ -21,7 +21,7 @@ pub fn http_client() -> reqwest::Client {
         .timeout(Duration::from_secs(20))
         .connect_timeout(Duration::from_secs(8))
         .redirect(reqwest::redirect::Policy::none())
-        .user_agent(concat!("UsageCheck/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("Quota/", env!("CARGO_PKG_VERSION")))
         .build()
         .expect("TLS backend available")
 }
@@ -56,7 +56,7 @@ pub struct LocalDetection {
     pub claude: bool,
     pub codex: bool,
     pub copilot: bool,
-    /// Copilot is installed but still needs a one-time GitHub sign-in for UsageCheck.
+    /// Copilot is installed but still needs a one-time GitHub sign-in for Quota.
     pub copilot_needs_sign_in: bool,
     pub antigravity: bool,
     pub cursor: bool,

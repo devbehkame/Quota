@@ -249,7 +249,7 @@ function topbar(): HTMLElement {
       h(
         "div",
         null,
-        h("h1", null, "UsageCheck"),
+        h("h1", null, "Quota"),
         h(
           "p",
           { class: "sub" },
@@ -989,7 +989,7 @@ async function openSettings() {
       h(
         "div",
         { class: "modal-foot spread" },
-        h("small", { class: "muted" }, `UsageCheck ${view.version}`),
+        h("small", { class: "muted" }, `Quota ${view.version}`),
         h("button", { class: "btn ghost", onclick: () => api.quit() }, "Quit app"),
       ),
     ),
@@ -1007,7 +1007,7 @@ function updateText(u: UpdateStatus): string {
     case "downloading":
       return `Downloading version ${u.newVersion}…`;
     case "installing":
-      return `Installing version ${u.newVersion}. UsageCheck will restart.`;
+      return `Installing version ${u.newVersion}. Quota will restart.`;
     case "error":
       return u.message ?? "Couldn't check for updates.";
     default:
@@ -1163,7 +1163,7 @@ function widgetSettings(s: Settings, save: () => Promise<void>): HTMLElement {
       { class: "settings" },
       settingRow(
         "Show on the taskbar",
-        "Your chosen accounts next to the clock: icon and how much is left. Hover for details, drag to move, click to open UsageCheck.",
+        "Your chosen accounts next to the clock: icon and how much is left. Hover for details, drag to move, click to open Quota.",
         enabled,
       ),
       slotRows,
@@ -1255,7 +1255,7 @@ async function boot() {
   try {
     view = await api.getState();
   } catch (e) {
-    root.replaceChildren(h("main", { class: "empty" }, h("h2", null, "UsageCheck could not start"), h("p", null, errorText(e))));
+    root.replaceChildren(h("main", { class: "empty" }, h("h2", null, "Quota could not start"), h("p", null, errorText(e))));
     return;
   }
   for (const s of view.snapshots) mergeSnapshot(s);

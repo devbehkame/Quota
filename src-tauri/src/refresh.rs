@@ -99,7 +99,7 @@ pub async fn refresh(app: &AppHandle, id: &str, trigger: Trigger) -> Result<Snap
                 next
             };
             keep_previous(format!(
-                "The provider asked UsageCheck to slow down, so it will try again in {} minutes.",
+                "The provider asked Quota to slow down, so it will try again in {} minutes.",
                 wait.as_secs() / 60
             ))
         }

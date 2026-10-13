@@ -96,7 +96,7 @@ function render() {
     looksKey = "";
     slots = view.items.map(slot);
     root.replaceChildren(
-      ...(slots.length ? slots.map((s) => s.el) : [h("span", { class: "empty" }, "UsageCheck: pick accounts in Settings")]),
+      ...(slots.length ? slots.map((s) => s.el) : [h("span", { class: "empty" }, "Quota: pick accounts in Settings")]),
     );
   }
   const looks = view.items.map(look);

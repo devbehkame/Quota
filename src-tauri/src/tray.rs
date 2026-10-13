@@ -8,7 +8,7 @@ use crate::commands::AppState;
 const TRAY_ID: &str = "main";
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Open UsageCheck", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Open Quota", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "Refresh all", true, None::<&str>)?;
     let widget_on = app.state::<AppState>().config.lock().unwrap().settings.widget.enabled;
     let widget = CheckMenuItem::with_id(app, "widget", "Taskbar widget", true, widget_on, None::<&str>)?;
@@ -17,7 +17,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&show, &refresh, &widget, &sep, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
-        .tooltip("UsageCheck")
+        .tooltip("Quota")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -104,7 +104,7 @@ pub fn update_tooltip(app: &AppHandle) {
             })
             .collect()
     };
-    let mut text = if lines.is_empty() { "UsageCheck".to_string() } else { lines.join("\n") };
+    let mut text = if lines.is_empty() { "Quota".to_string() } else { lines.join("\n") };
     // Windows truncates tray tooltips at 127 characters.
     if text.chars().count() > 120 {
         text = text.chars().take(117).collect::<String>() + "…";

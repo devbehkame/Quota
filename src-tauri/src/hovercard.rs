@@ -34,7 +34,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         return Ok(());
     }
     let w = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("card.html".into()))
-        .title("UsageCheck details")
+        .title("Quota details")
         .inner_size(320.0, 200.0)
         .decorations(false)
         .transparent(true)

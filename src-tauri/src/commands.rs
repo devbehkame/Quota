@@ -304,7 +304,7 @@ pub fn quit_app(app: AppHandle) {
 }
 
 /// Opens the official GitHub CLI sign-in (`gh auth login --web`) in its own console
-/// window. Used for Copilot in VS Code, whose own sign-in UsageCheck doesn't read.
+/// window. Used for Copilot in VS Code, whose own sign-in Quota doesn't read.
 #[tauri::command]
 pub async fn github_sign_in() -> Result<(), String> {
     #[cfg(windows)]

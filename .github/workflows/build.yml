@@ -68,7 +68,7 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
-          name: UsageCheck-windows
+          name: Quota-windows
           path: |
             target/release/bundle/nsis/*.exe
             target/release/bundle/msi/*.msi
@@ -86,7 +86,7 @@ jobs:
           repository: ${{ env.RELEASE_REPO }}
           token: ${{ secrets.RELEASES_TOKEN || github.token }}
           tag_name: v${{ steps.version.outputs.version }}
-          name: UsageCheck ${{ steps.version.outputs.version }}
+          name: Quota ${{ steps.version.outputs.version }}
           body: ${{ github.event.head_commit.message }}
           make_latest: true
           fail_on_unmatched_files: true
