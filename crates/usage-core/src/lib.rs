@@ -43,6 +43,8 @@ pub async fn fetch(
         ProviderKind::OpenaiApi => providers::openai_api::fetch(client, account, need()?).await,
         ProviderKind::Openrouter => providers::openrouter::fetch(client, need()?).await,
         ProviderKind::Deepseek => providers::deepseek::fetch(client, need()?).await,
+        ProviderKind::Copilot => providers::copilot::fetch(client, account, secret).await,
+        ProviderKind::Antigravity => providers::antigravity::fetch().await,
     }
 }
 
@@ -52,6 +54,8 @@ pub async fn fetch(
 pub struct LocalDetection {
     pub claude: bool,
     pub codex: bool,
+    pub copilot: bool,
+    pub antigravity: bool,
 }
 
 pub fn detect_local() -> LocalDetection {
@@ -59,5 +63,7 @@ pub fn detect_local() -> LocalDetection {
         claude: providers::claude_plan::credentials_path(None).is_some_and(|p| p.is_file()),
         codex: providers::codex_plan::auth_path(None).is_some_and(|p| p.is_file())
             || providers::codex_plan::sessions_dir(None).is_some_and(|p| p.is_dir()),
+        copilot: providers::copilot::detected(),
+        antigravity: providers::antigravity::detected(),
     }
 }

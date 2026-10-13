@@ -6,9 +6,11 @@ export type ProviderKind =
   | "anthropic_api"
   | "openai_api"
   | "openrouter"
-  | "deepseek";
+  | "deepseek"
+  | "copilot"
+  | "antigravity";
 
-export type Unit = "percent" | "usd" | "cny";
+export type Unit = "percent" | "usd" | "cny" | "count";
 
 export interface Account {
   id: string;
@@ -53,7 +55,7 @@ export interface AppView {
   accounts: Account[];
   settings: Settings;
   snapshots: Snapshot[];
-  detected: { claude: boolean; codex: boolean };
+  detected: { claude: boolean; codex: boolean; copilot: boolean; antigravity: boolean };
   version: string;
 }
 

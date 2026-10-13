@@ -77,10 +77,15 @@ pub fn update_tooltip(app: &AppHandle) {
                     return Some(format!("{}: {:.0}% left", a.label, p));
                 }
                 let m = usage.meters.first()?;
-                let sym = if m.unit == Unit::Cny { "¥" } else { "$" };
                 let v = m.remaining.or(m.used)?;
-                let what = if m.remaining.is_some() { "left" } else { "spent" };
-                Some(format!("{}: {sym}{v:.2} {what}", a.label))
+                let left = m.remaining.is_some();
+                Some(match m.unit {
+                    Unit::Count => format!("{}: {v:.0} {}", a.label, if left { "left" } else { "used" }),
+                    unit => {
+                        let sym = if unit == Unit::Cny { "¥" } else { "$" };
+                        format!("{}: {sym}{v:.2} {}", a.label, if left { "left" } else { "spent" })
+                    }
+                })
             })
             .collect()
     };

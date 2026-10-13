@@ -6,11 +6,13 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
-use usage_core::{Account, LocalDetection, ProviderKind, Snapshot};
+use usage_core::{Account, LocalDetection, ProviderKind, Snapshot, UsageError};
 use zeroize::Zeroizing;
 
 use crate::config::{self, Config, Settings};
 use crate::{secrets, tray};
+
+const STALE_PREFIX: &str = "Showing the last values seen.";
 
 pub struct AppState {
     pub client: usage_core::HttpClient,
@@ -89,6 +91,8 @@ fn default_label(kind: ProviderKind) -> &'static str {
         ProviderKind::OpenaiApi => "OpenAI API",
         ProviderKind::Openrouter => "OpenRouter",
         ProviderKind::Deepseek => "DeepSeek",
+        ProviderKind::Copilot => "GitHub Copilot",
+        ProviderKind::Antigravity => "Antigravity",
     }
 }
 
@@ -108,7 +112,7 @@ fn clean(input: AccountInput) -> Result<CleanInput, String> {
 
     let data_path = match input.data_path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
         None => None,
-        Some(_) if !matches!(input.kind, ProviderKind::ClaudePlan | ProviderKind::CodexPlan) => None,
+        Some(_) if !input.kind.uses_local_folder() => None,
         Some(p) if p.len() > 1024 || !Path::new(p).is_absolute() => {
             return Err("Folder must be a full path, like C:\\Users\\you\\.claude".into())
         }
@@ -220,7 +224,23 @@ pub async fn refresh_account(app: AppHandle, state: State<'_, AppState>, id: Str
     let account = state.account(&id)?;
     let secret = secrets::get(&id)?;
     let result = usage_core::fetch(&state.client, &account, secret.as_deref().map(|s| s.as_str())).await;
-    let snap = Snapshot::from_result(&id, result);
+    let snap = match result {
+        // The local app (e.g. Antigravity) is closed: keep the last numbers we saw.
+        Err(UsageError::Offline(msg)) => {
+            let previous = state.snapshots.lock().unwrap().get(&id).cloned();
+            match previous {
+                Some(mut prev) if prev.usage.is_some() => {
+                    if let Some(u) = prev.usage.as_mut() {
+                        u.notes.retain(|n| !n.starts_with(STALE_PREFIX));
+                        u.notes.insert(0, format!("{STALE_PREFIX} {msg}"));
+                    }
+                    prev
+                }
+                _ => Snapshot::from_result(&id, Err(UsageError::Offline(msg))),
+            }
+        }
+        other => Snapshot::from_result(&id, other),
+    };
     // Ignore results for accounts deleted while the request was in flight.
     if state.account(&id).is_ok() {
         state.snapshots.lock().unwrap().insert(id, snap.clone());

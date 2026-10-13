@@ -70,6 +70,20 @@ pub fn next_month_start(now: DateTime<Utc>) -> DateTime<Utc> {
     Utc.from_utc_datetime(&d.and_hms_opt(0, 0, 0).expect("valid time"))
 }
 
+/// Runs a helper program without flashing a console window, with a short timeout.
+/// Returns stdout on success.
+pub async fn run_hidden(program: &str, args: &[&str]) -> Option<String> {
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let out = tokio::time::timeout(std::time::Duration::from_secs(8), cmd.output()).await.ok()?.ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 pub fn fmt_money(symbol: &str, v: f64) -> String {
     format!("{symbol}{v:.2}")
 }

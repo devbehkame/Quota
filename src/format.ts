@@ -1,6 +1,7 @@
 import type { Meter, Unit } from "./api";
 
 export function money(unit: Unit, v: number): string {
+  if (unit === "count") return Math.round(v).toLocaleString();
   const sym = unit === "cny" ? "¥" : "$";
   const abs = Math.abs(v);
   const digits = abs >= 1000 ? 0 : 2;
@@ -68,5 +69,5 @@ export function headline(m: Meter): { value: string; caption: string } {
   if (m.remaining !== null) {
     return { value: money(m.unit, m.remaining), caption: "left" };
   }
-  return { value: money(m.unit, m.used ?? 0), caption: "spent" };
+  return { value: money(m.unit, m.used ?? 0), caption: m.unit === "count" ? "used" : "spent" };
 }

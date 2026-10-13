@@ -6,6 +6,9 @@ use thiserror::Error;
 pub enum UsageError {
     #[error("{0}")]
     Setup(String),
+    /// The local app that provides the data isn't running right now.
+    #[error("{0}")]
+    Offline(String),
     #[error("The provider rejected the credentials (HTTP 401). Check that the key is correct and not revoked.")]
     Unauthorized,
     #[error("Access denied (HTTP 403): {0}")]

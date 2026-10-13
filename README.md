@@ -12,8 +12,14 @@ A small, fast Windows app that shows how much usage is left on your AI accounts,
 | **OpenAI API** | Spend this month, and what's left of your budget | Admin API key (`sk-admin-…`) |
 | **OpenRouter** | Credits left | API key (a management key shows the whole account) |
 | **DeepSeek** | Prepaid balance | API key |
+| **GitHub Copilot** | Premium requests left this month (plus chat and completions on Free), with the reset date | Reuses the GitHub sign-in from Copilot for JetBrains / Visual Studio / Vim or the [GitHub CLI](https://cli.github.com/) (`gh auth login`). You can also paste a token. |
+| **Antigravity** | Quota left for each model group, with reset times, plus prompt credits | Reads the quota from [Antigravity](https://antigravity.google/) while it's running on your PC. Nothing to paste, and nothing leaves your computer. |
 
 > **Why the ChatGPT and Claude plans work this way:** neither OpenAI nor Anthropic offers a public API for consumer plan limits. UsageCheck calls the same usage endpoints their own command-line tools use (Claude Code's `/usage`, Codex's `/status`). These endpoints are undocumented, so either company could change them at any time.
+>
+> GitHub Copilot's quota endpoint is also internal. If it refuses your token (fine-grained tokens usually can't use it), UsageCheck switches to GitHub's official billing API. That needs a fine-grained token with the **Plan (read)** account permission, and only reports requests *used*, so you also enter your monthly allowance (e.g. 300 for Pro).
+>
+> Antigravity has no web API for quotas. UsageCheck asks the Antigravity app on your PC, the same way the app's own quota display does, so Antigravity has to be open. When it's closed, the card keeps the last values it saw and says so.
 >
 > For ChatGPT, if the live call isn't possible (for example Codex keeps its sign-in in the OS keyring instead of `~/.codex/auth.json`, or the sign-in has expired), UsageCheck falls back to the limits Codex saved in its session logs after your last message, and says so on the card.
 
@@ -31,7 +37,8 @@ To see your plan limits:
 
 - **Keys live in Windows Credential Manager**, which encrypts them with DPAPI under your Windows account. They are never written to the app's config file.
 - **The interface never sees your keys.** All network calls happen in the Rust backend. The web UI only gets the usage numbers back, and it renders them as plain text (no `innerHTML`), so a provider response can't inject markup.
-- **Your Claude and Codex sign-ins are only read.** UsageCheck never refreshes or rewrites them, so Claude Code and Codex keep working normally. Each is sent only to its own service (api.anthropic.com, chatgpt.com).
+- **Your Claude, Codex and GitHub sign-ins are only read.** UsageCheck never refreshes or rewrites them, so those tools keep working normally. Each is sent only to its own service (api.anthropic.com, chatgpt.com, api.github.com).
+- **Antigravity stays on your PC.** UsageCheck only talks to Antigravity's local server on `127.0.0.1`, using the per-session token Antigravity gives it on its command line. That local server uses a self-signed certificate, so certificate checks are off for that one loopback connection only. Nothing goes over the internet.
 - **Network access is locked down:** HTTPS only, no redirects followed, strict timeouts, and each key goes only to its own provider's host.
 - **Least-privilege Tauri setup:** a strict Content-Security-Policy, a frozen JS prototype, and only the permissions the UI needs. Links open only for an allow-listed set of provider sites.
 - **No telemetry, no analytics, no accounts.**

@@ -154,6 +154,8 @@ function emptyState(): HTMLElement {
   const quick: HTMLElement[] = [];
   if (d.claude) quick.push(quickAdd("claude_plan", "Claude", "Claude Code sign-in found"));
   if (d.codex) quick.push(quickAdd("codex_plan", "ChatGPT", "Codex CLI sign-in found"));
+  if (d.copilot) quick.push(quickAdd("copilot", "GitHub Copilot", "Copilot sign-in found"));
+  if (d.antigravity) quick.push(quickAdd("antigravity", "Antigravity", "Antigravity is running"));
   return h(
     "main",
     { class: "empty" },
@@ -197,7 +199,7 @@ function grid(): HTMLElement {
 }
 
 function avatar(p: ProviderInfo): HTMLElement {
-  return h("div", { class: "avatar", style: { "--accent": p.color } }, p.glyph);
+  return h("div", { class: `avatar${p.glyph.length > 1 ? " two" : ""}`, style: { "--accent": p.color } }, p.glyph);
 }
 
 function card(a: Account): HTMLElement {
@@ -455,7 +457,11 @@ function openAccountDialog(existing?: Account) {
         "div",
         { class: "picker" },
         ...PROVIDERS.map((p) => {
-          const found = (p.kind === "claude_plan" && detected.claude) || (p.kind === "codex_plan" && detected.codex);
+          const found =
+            (p.kind === "claude_plan" && detected.claude) ||
+            (p.kind === "codex_plan" && detected.codex) ||
+            (p.kind === "copilot" && detected.copilot) ||
+            (p.kind === "antigravity" && detected.antigravity);
           return h(
             "button",
             { class: "pick", onclick: () => showForm(p) },
@@ -506,7 +512,7 @@ function openAccountDialog(existing?: Account) {
       min: 0,
       step: "1",
       inputmode: "decimal",
-      placeholder: "e.g. 100",
+      placeholder: p.budget?.placeholder ?? "",
       value: existing?.monthlyBudget ?? "",
     });
     const folder = h("input", {
@@ -526,7 +532,7 @@ function openAccountDialog(existing?: Account) {
       const b = budget.value.trim();
       const monthlyBudget = p.budget && b !== "" ? Number(b) : null;
       if (monthlyBudget !== null && (!Number.isFinite(monthlyBudget) || monthlyBudget < 0)) {
-        showResult(result, { ok: false, text: "Budget must be a positive number." });
+        showResult(result, { ok: false, text: `${p.budget?.label ?? "Budget"} must be a positive number.` });
         return null;
       }
       return {
@@ -577,10 +583,12 @@ function openAccountDialog(existing?: Account) {
       p.secret === "required" ? secretField : null,
       p.budget
         ? field(
-            "Monthly budget (USD)",
+            p.budget.label,
             "f-budget",
-            h("div", { class: "input-wrap prefix" }, h("span", { class: "prefix-sym" }, "$"), budget),
-            "Optional. Used to show how much is left this month.",
+            p.budget.prefix
+              ? h("div", { class: "input-wrap prefix" }, h("span", { class: "prefix-sym" }, p.budget.prefix), budget)
+              : budget,
+            p.budget.hint,
           )
         : null,
       advanced.length ? h("details", { class: "advanced" }, h("summary", null, "Advanced"), ...advanced) : null,

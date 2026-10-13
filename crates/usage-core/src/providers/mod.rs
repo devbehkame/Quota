@@ -1,6 +1,8 @@
 pub mod anthropic_api;
+pub mod antigravity;
 pub mod claude_plan;
 pub mod codex_plan;
+pub mod copilot;
 pub mod deepseek;
 pub mod openai_api;
 pub mod openrouter;

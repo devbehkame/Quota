@@ -17,17 +17,29 @@ pub enum ProviderKind {
     Openrouter,
     /// DeepSeek prepaid balance.
     Deepseek,
+    /// GitHub Copilot premium requests and chat/completion quotas.
+    Copilot,
+    /// Google Antigravity per-model quotas, read from the running IDE.
+    Antigravity,
 }
 
 impl ProviderKind {
     /// Whether an API key must be stored for this provider.
     pub fn requires_secret(self) -> bool {
-        !matches!(self, ProviderKind::ClaudePlan | ProviderKind::CodexPlan)
+        !matches!(
+            self,
+            ProviderKind::ClaudePlan | ProviderKind::CodexPlan | ProviderKind::Copilot | ProviderKind::Antigravity
+        )
     }
 
     /// Whether a user-defined monthly budget makes sense for this provider.
     pub fn supports_budget(self) -> bool {
-        matches!(self, ProviderKind::AnthropicApi | ProviderKind::OpenaiApi)
+        matches!(self, ProviderKind::AnthropicApi | ProviderKind::OpenaiApi | ProviderKind::Copilot)
+    }
+
+    /// Whether the account reads a local app's folder (which can be overridden).
+    pub fn uses_local_folder(self) -> bool {
+        matches!(self, ProviderKind::ClaudePlan | ProviderKind::CodexPlan | ProviderKind::Copilot)
     }
 }
 
@@ -38,7 +50,8 @@ pub struct Account {
     pub id: String,
     pub kind: ProviderKind,
     pub label: String,
-    /// Monthly spend budget in USD (API providers only).
+    /// Monthly spend budget in USD (API providers), or the monthly premium-request
+    /// allowance for Copilot when only the billing API is available.
     #[serde(default)]
     pub monthly_budget: Option<f64>,
     /// Optional override for where local data lives (Claude / Codex config folder).
@@ -52,6 +65,8 @@ pub enum Unit {
     Percent,
     Usd,
     Cny,
+    /// A plain count, e.g. premium requests.
+    Count,
 }
 
 /// One gauge on an account card, e.g. "Session (5-hour)" or "This month".
