@@ -1,9 +1,14 @@
-//! ChatGPT Plus / Pro limits as seen by the Codex CLI.
+//! ChatGPT Plus / Pro limits, the same numbers Codex CLI shows in `/status`.
 //!
-//! OpenAI has no public API for ChatGPT plan limits. The Codex CLI records the
-//! rate-limit windows it receives in its local session logs
-//! (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`), so we read the most recent
-//! entry from disk. Nothing is sent over the network and no tokens are touched.
+//! OpenAI has no public API for ChatGPT plan limits. Two sources are used:
+//!
+//! 1. **Live** (preferred): the usage endpoint Codex itself polls every minute,
+//!    authenticated with the ChatGPT sign-in Codex keeps in `~/.codex/auth.json`.
+//!    The token is only read, never refreshed or rewritten, and is sent only to chatgpt.com.
+//! 2. **Fallback**: the rate-limit windows Codex records in its local session logs
+//!    (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`) after each message. Used when
+//!    there is no file-based sign-in (e.g. Codex stores it in the OS keyring) or the
+//!    live call fails.
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -13,34 +18,168 @@ use std::time::SystemTime;
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 
-use crate::util::{num, timestamp};
+use crate::util::{num, send_json, timestamp};
 use crate::{Account, Meter, Usage, UsageError};
+
+const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
 
 /// Only the end of each log is scanned; rate-limit events are written every turn.
 const TAIL_BYTES: u64 = 512 * 1024;
 const MAX_FILES: usize = 25;
 
-pub fn sessions_dir(over: Option<&str>) -> Option<PathBuf> {
-    super::config_dir(over, "CODEX_HOME", ".codex").map(|d| d.join("sessions"))
+fn codex_home(over: Option<&str>) -> Option<PathBuf> {
+    super::config_dir(over, "CODEX_HOME", ".codex")
 }
 
-pub async fn fetch(account: &Account) -> Result<Usage, UsageError> {
-    let dir = sessions_dir(account.data_path.as_deref())
-        .ok_or_else(|| UsageError::Setup("Could not locate your home folder.".into()))?;
+pub fn sessions_dir(over: Option<&str>) -> Option<PathBuf> {
+    codex_home(over).map(|d| d.join("sessions"))
+}
+
+pub fn auth_path(over: Option<&str>) -> Option<PathBuf> {
+    codex_home(over).map(|d| d.join("auth.json"))
+}
+
+pub async fn fetch(client: &reqwest::Client, account: &Account) -> Result<Usage, UsageError> {
+    let over = account.data_path.as_deref();
+    let live_err = match read_auth(over) {
+        Some(auth) => match fetch_live(client, &auth).await {
+            Ok(u) => return Ok(u),
+            Err(e) => Some(e),
+        },
+        None => None,
+    };
+
+    match from_logs(over) {
+        Ok(mut usage) => {
+            let why = match &live_err {
+                Some(UsageError::Unauthorized) | Some(UsageError::Forbidden(_)) => {
+                    "Live data unavailable: your Codex sign-in has expired. Run `codex` once to renew it."
+                        .to_string()
+                }
+                Some(e) => format!("Live data unavailable ({e})."),
+                None => "Live data needs Codex signed in with ChatGPT (`codex login`).".to_string(),
+            };
+            usage.notes.insert(0, why);
+            Ok(usage)
+        }
+        Err(log_err) => Err(match live_err {
+            Some(UsageError::Unauthorized) | Some(UsageError::Forbidden(_)) => UsageError::Setup(
+                "Your Codex sign-in has expired. Run `codex` once to renew it, then refresh.".into(),
+            ),
+            Some(e) => e,
+            None => log_err,
+        }),
+    }
+}
+
+struct Auth {
+    access_token: String,
+    account_id: Option<String>,
+}
+
+fn read_auth(over: Option<&str>) -> Option<Auth> {
+    let raw = std::fs::read_to_string(auth_path(over)?).ok()?;
+    parse_auth(&raw)
+}
+
+fn parse_auth(raw: &str) -> Option<Auth> {
+    let v: Value = serde_json::from_str(raw).ok()?;
+    let t = &v["tokens"];
+    let access_token = t["access_token"].as_str().filter(|s| !s.is_empty())?.to_owned();
+    let account_id = t["account_id"].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
+    Some(Auth { access_token, account_id })
+}
+
+async fn fetch_live(client: &reqwest::Client, auth: &Auth) -> Result<Usage, UsageError> {
+    let mut req = client.get(USAGE_URL).bearer_auth(&auth.access_token).header("accept", "application/json");
+    if let Some(id) = &auth.account_id {
+        req = req.header("ChatGPT-Account-Id", id);
+    }
+    let body = send_json(req).await?;
+    parse_live(&body, Utc::now()).ok_or_else(|| UsageError::Parse("no rate-limit windows in the response".into()))
+}
+
+fn live_windows(details: &Value) -> Vec<Window> {
+    ["primary_window", "secondary_window"]
+        .iter()
+        .filter_map(|k| {
+            let w = &details[*k];
+            Some(Window {
+                used_percent: num(&w["used_percent"])?,
+                window_minutes: num(&w["limit_window_seconds"]).map(|s| s / 60.0),
+                resets_at: timestamp(&w["reset_at"]).or_else(|| {
+                    num(&w["reset_after_seconds"]).map(|s| Utc::now() + Duration::seconds(s as i64))
+                }),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn parse_live(v: &Value, now: DateTime<Utc>) -> Option<Usage> {
+    let windows = live_windows(&v["rate_limit"]);
+    let mut extra = Vec::new();
+    for a in v["additional_rate_limits"].as_array().into_iter().flatten() {
+        let name = a["limit_name"].as_str().or(a["metered_feature"].as_str()).unwrap_or("Extra");
+        for (i, w) in live_windows(&a["rate_limit"]).into_iter().enumerate() {
+            extra.push((format!("{name} · {}", window_label(w.window_minutes, i)), w));
+        }
+    }
+    if windows.is_empty() && extra.is_empty() {
+        return None;
+    }
+    let mut usage = to_usage(Found { windows, plan: plan_name(&v["plan_type"]), observed_at: now }, now, None);
+    for (label, w) in extra {
+        usage.meters.push(window_meter(label, &w, now));
+    }
+    if v["rate_limit"]["limit_reached"].as_bool() == Some(true) {
+        usage.notes.push("You have hit a usage limit. It frees up at the reset time shown.".into());
+    }
+    let credits = &v["credits"];
+    if credits["unlimited"].as_bool() == Some(true) {
+        usage.notes.push("Unlimited credits.".into());
+    } else if credits["has_credits"].as_bool() == Some(true) {
+        let balance = credits["balance"].as_str().map(str::to_owned).or_else(|| num(&credits["balance"]).map(|n| n.to_string()));
+        if let Some(b) = balance.filter(|b| !b.is_empty()) {
+            usage.notes.push(format!("Credit balance: {b}"));
+        }
+    }
+    Some(usage)
+}
+
+fn plan_name(v: &Value) -> Option<String> {
+    let p = v.as_str().filter(|p| !p.is_empty() && *p != "unknown")?;
+    Some(match p {
+        "prolite" => "Pro Lite".into(),
+        "promax" => "Pro Max".into(),
+        "edu_plus" => "Edu Plus".into(),
+        "edu_pro" => "Edu Pro".into(),
+        other => {
+            let s = other.replace('_', " ");
+            let mut c = s.chars();
+            c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+        }
+    })
+}
+
+fn from_logs(over: Option<&str>) -> Result<Usage, UsageError> {
+    let dir = sessions_dir(over).ok_or_else(|| UsageError::Setup("Could not locate your home folder.".into()))?;
     if !dir.is_dir() {
         return Err(UsageError::Setup(format!(
-            "No Codex sessions found in {}. Install the Codex CLI, sign in with ChatGPT, and send one message.",
-            dir.display()
+            "No Codex sign-in found in {}. Install the Codex CLI and run `codex login` with your ChatGPT account.",
+            dir.parent().unwrap_or(&dir).display()
         )));
     }
-    let files = recent_logs(&dir);
-    for (modified, path) in &files {
+    for (modified, path) in &recent_logs(&dir) {
         if let Some(found) = last_rate_limits(path, *modified) {
-            return Ok(to_usage(found, Utc::now()));
+            let note = format!(
+                "As of your last Codex message ({}).",
+                found.observed_at.format("%Y-%m-%d %H:%M UTC")
+            );
+            return Ok(to_usage(found, Utc::now(), Some(note)));
         }
     }
     Err(UsageError::Setup(
-        "Codex is installed but no plan limits were recorded yet. Send a message in Codex (signed in with ChatGPT), then refresh."
+        "No Codex sign-in or recorded limits found yet. Run `codex login` with your ChatGPT account, then refresh."
             .into(),
     ))
 }
@@ -145,29 +284,23 @@ fn window_label(minutes: Option<f64>, index: usize) -> String {
     }
 }
 
-pub(crate) fn to_usage(found: Found, now: DateTime<Utc>) -> Usage {
+fn window_meter(label: String, w: &Window, now: DateTime<Utc>) -> Meter {
+    if w.resets_at.is_some_and(|r| r <= now) {
+        // The window rolled over since this snapshot was taken; it starts fresh.
+        Meter::percent(label, 0.0, None).with_detail("Window has reset since this was recorded")
+    } else {
+        Meter::percent(label, w.used_percent, w.resets_at)
+    }
+}
+
+pub(crate) fn to_usage(found: Found, now: DateTime<Utc>, note: Option<String>) -> Usage {
     let meters = found
         .windows
         .iter()
         .enumerate()
-        .map(|(i, w)| {
-            let label = window_label(w.window_minutes, i);
-            if w.resets_at.is_some_and(|r| r <= now) {
-                // The window rolled over since Codex last reported; it starts fresh.
-                Meter::percent(label, 0.0, None).with_detail("Window has reset since your last Codex message")
-            } else {
-                Meter::percent(label, w.used_percent, w.resets_at)
-            }
-        })
+        .map(|(i, w)| window_meter(window_label(w.window_minutes, i), w, now))
         .collect();
-    Usage {
-        plan: found.plan,
-        meters,
-        notes: vec![format!(
-            "As of your last Codex message ({}). Updates each time you use Codex.",
-            found.observed_at.format("%Y-%m-%d %H:%M UTC")
-        )],
-    }
+    Usage { plan: found.plan, meters, notes: note.into_iter().collect() }
 }
 
 #[cfg(test)]
@@ -183,7 +316,7 @@ mod tests {
     fn parses_resets_in_seconds() {
         let line = r#"{"timestamp":"2026-10-13T10:00:00Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"primary":{"used_percent":42.0,"window_minutes":300,"resets_in_seconds":3600},"secondary":{"used_percent":7.5,"window_minutes":10080,"resets_in_seconds":86400}}}}"#;
         let f = parse_line(line, t(0)).unwrap();
-        let u = to_usage(f, t(10));
+        let u = to_usage(f, t(10), None);
         assert_eq!(u.meters[0].label, "Session (5-hour)");
         assert_eq!(u.meters[0].remaining, Some(58.0));
         assert_eq!(u.meters[0].resets_at, Some(t(11)));
@@ -201,7 +334,7 @@ mod tests {
     #[test]
     fn expired_window_shows_fresh() {
         let line = r#"{"timestamp":"2026-10-13T01:00:00Z","payload":{"rate_limits":{"primary":{"used_percent":95,"window_minutes":300,"resets_in_seconds":60}}}}"#;
-        let u = to_usage(parse_line(line, t(0)).unwrap(), t(9));
+        let u = to_usage(parse_line(line, t(0)).unwrap(), t(9), None);
         assert_eq!(u.meters[0].percent_used, Some(0.0));
         assert!(u.meters[0].detail.is_some());
     }
@@ -232,4 +365,41 @@ mod tests {
         assert_eq!(f.windows[0].used_percent, 20.0);
         std::fs::remove_dir_all(root).ok();
     }
+
+    #[test]
+    fn parses_live_usage() {
+        let now = t(10);
+        let reset = (now + Duration::hours(2)).timestamp();
+        let v = serde_json::json!({
+            "plan_type": "pro",
+            "rate_limit": {
+                "allowed": true, "limit_reached": false,
+                "primary_window": {"used_percent": 30, "limit_window_seconds": 18000, "reset_after_seconds": 7200, "reset_at": reset},
+                "secondary_window": {"used_percent": 55, "limit_window_seconds": 604800, "reset_after_seconds": 400000, "reset_at": reset + 400000}
+            },
+            "credits": {"has_credits": true, "unlimited": false, "balance": "120"},
+            "additional_rate_limits": [
+                {"limit_name": "GPT-5-Codex-Spark", "metered_feature": "codex_spark",
+                 "rate_limit": {"allowed": true, "limit_reached": false,
+                   "primary_window": {"used_percent": 10, "limit_window_seconds": 18000, "reset_after_seconds": 100, "reset_at": reset}}}
+            ]
+        });
+        let u = parse_live(&v, now).unwrap();
+        assert_eq!(u.plan.as_deref(), Some("Pro"));
+        let labels: Vec<_> = u.meters.iter().map(|m| m.label.as_str()).collect();
+        assert_eq!(labels, ["Session (5-hour)", "Weekly", "GPT-5-Codex-Spark · Session (5-hour)"]);
+        assert_eq!(u.meters[0].remaining, Some(70.0));
+        assert_eq!(u.meters[0].resets_at.map(|r| r.timestamp()), Some(reset));
+        assert_eq!(u.notes, ["Credit balance: 120"]);
+        assert!(parse_live(&serde_json::json!({"plan_type": "plus", "rate_limit": null}), now).is_none());
+    }
+
+    #[test]
+    fn reads_auth_file() {
+        let a = parse_auth(r#"{"OPENAI_API_KEY":null,"tokens":{"id_token":"x.y.z","access_token":"acc","refresh_token":"ref","account_id":"org-1"},"last_refresh":"2026-10-01T00:00:00Z"}"#).unwrap();
+        assert_eq!(a.access_token, "acc");
+        assert_eq!(a.account_id.as_deref(), Some("org-1"));
+        assert!(parse_auth(r#"{"OPENAI_API_KEY":"sk-123"}"#).is_none());
+    }
+
 }

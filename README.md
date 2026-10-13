@@ -7,13 +7,15 @@ A small, fast Windows app that shows how much usage is left on your AI accounts,
 | Account | What you see | How it connects |
 | --- | --- | --- |
 | **Claude plan** (Pro / Max) | 5-hour session and weekly limits, with reset times | Reads the sign-in from [Claude Code](https://claude.com/product/claude-code) on your PC. Nothing to paste. |
-| **ChatGPT plan** (Plus / Pro) | 5-hour and weekly Codex limits, with reset times | Reads the limits the [Codex CLI](https://developers.openai.com/codex/cli) saves locally after each message. Nothing is sent anywhere. |
+| **ChatGPT plan** (Plus / Pro) | Live 5-hour and weekly Codex limits, with reset times | Reuses the ChatGPT sign-in from the [Codex CLI](https://developers.openai.com/codex/cli) on your PC. Nothing to paste. |
 | **Anthropic API** | Spend this month, and what's left of your budget | Admin API key (`sk-ant-admin…`) |
 | **OpenAI API** | Spend this month, and what's left of your budget | Admin API key (`sk-admin-…`) |
 | **OpenRouter** | Credits left | API key (a management key shows the whole account) |
 | **DeepSeek** | Prepaid balance | API key |
 
-> **Why the ChatGPT and Claude plans work this way:** neither OpenAI nor Anthropic offers a public API for consumer plan limits. UsageCheck uses the same data their own command-line tools use. The Claude endpoint is undocumented, so Anthropic could change it at any time.
+> **Why the ChatGPT and Claude plans work this way:** neither OpenAI nor Anthropic offers a public API for consumer plan limits. UsageCheck calls the same usage endpoints their own command-line tools use (Claude Code's `/usage`, Codex's `/status`). These endpoints are undocumented, so either company could change them at any time.
+>
+> For ChatGPT, if the live call isn't possible (for example Codex keeps its sign-in in the OS keyring instead of `~/.codex/auth.json`, or the sign-in has expired), UsageCheck falls back to the limits Codex saved in its session logs after your last message, and says so on the card.
 
 ## Install
 
@@ -23,13 +25,13 @@ A small, fast Windows app that shows how much usage is left on your AI accounts,
 
 To see your plan limits:
 - **Claude:** install Claude Code and run `claude` once to sign in. If the token expires, opening Claude Code renews it.
-- **ChatGPT:** install Codex CLI, sign in with your ChatGPT account and send one message. The card updates every time you use Codex.
+- **ChatGPT:** install Codex CLI and run `codex login` with your ChatGPT account. The card then updates live on every refresh, with no messages needed. If the sign-in expires, running `codex` once renews it.
 
 ## Security
 
 - **Keys live in Windows Credential Manager**, which encrypts them with DPAPI under your Windows account. They are never written to the app's config file.
 - **The interface never sees your keys.** All network calls happen in the Rust backend. The web UI only gets the usage numbers back, and it renders them as plain text (no `innerHTML`), so a provider response can't inject markup.
-- **Your Claude sign-in is only read.** UsageCheck never refreshes or rewrites it, so Claude Code keeps working normally.
+- **Your Claude and Codex sign-ins are only read.** UsageCheck never refreshes or rewrites them, so Claude Code and Codex keep working normally. Each is sent only to its own service (api.anthropic.com, chatgpt.com).
 - **Network access is locked down:** HTTPS only, no redirects followed, strict timeouts, and each key goes only to its own provider's host.
 - **Least-privilege Tauri setup:** a strict Content-Security-Policy, a frozen JS prototype, and only the permissions the UI needs. Links open only for an allow-listed set of provider sites.
 - **No telemetry, no analytics, no accounts.**
@@ -38,7 +40,7 @@ To see your plan limits:
 
 - Every account on one dashboard, coloured green, amber or red by how much is left.
 - Reset countdowns ("Resets in 2h 18m"). Hover one for the exact time.
-- Auto-refresh (off, or every 1–60 min). Ctrl+R / F5 refreshes now.
+- Auto-refresh (off, or every 1–60 min), plus a refresh of anything older than a minute when you bring the window back. Ctrl+R / F5 refreshes now.
 - Tray icon: hover it to see each account's tightest limit; right-click it to refresh or quit.
 - Optional start with Windows (launches minimized to the tray).
 - Light, dark or system theme.

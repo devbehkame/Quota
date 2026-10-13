@@ -153,7 +153,7 @@ function emptyState(): HTMLElement {
   const d = view!.detected;
   const quick: HTMLElement[] = [];
   if (d.claude) quick.push(quickAdd("claude_plan", "Claude", "Claude Code sign-in found"));
-  if (d.codex) quick.push(quickAdd("codex_plan", "ChatGPT", "Codex CLI sessions found"));
+  if (d.codex) quick.push(quickAdd("codex_plan", "ChatGPT", "Codex CLI sign-in found"));
   return h(
     "main",
     { class: "empty" },
@@ -783,6 +783,17 @@ document.addEventListener("contextmenu", (e) => {
   if (!t.closest("input, textarea")) e.preventDefault();
 });
 window.addEventListener("resize", closeMenu);
+// Coming back to the window (e.g. from the tray) refreshes anything older than a minute.
+function refreshStale() {
+  if (!view || document.visibilityState !== "visible") return;
+  const cutoff = Date.now() - 60_000;
+  for (const a of view.accounts) {
+    const s = snaps.get(a.id);
+    if (!s || Date.parse(s.fetchedAt) < cutoff) void refreshOne(a.id);
+  }
+}
+window.addEventListener("focus", refreshStale);
+document.addEventListener("visibilitychange", refreshStale);
 
 async function boot() {
   try {

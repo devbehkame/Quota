@@ -38,7 +38,7 @@ pub async fn fetch(
     };
     match account.kind {
         ProviderKind::ClaudePlan => providers::claude_plan::fetch(client, account, secret).await,
-        ProviderKind::CodexPlan => providers::codex_plan::fetch(account).await,
+        ProviderKind::CodexPlan => providers::codex_plan::fetch(client, account).await,
         ProviderKind::AnthropicApi => providers::anthropic_api::fetch(client, account, need()?).await,
         ProviderKind::OpenaiApi => providers::openai_api::fetch(client, account, need()?).await,
         ProviderKind::Openrouter => providers::openrouter::fetch(client, need()?).await,
@@ -57,6 +57,7 @@ pub struct LocalDetection {
 pub fn detect_local() -> LocalDetection {
     LocalDetection {
         claude: providers::claude_plan::credentials_path(None).is_some_and(|p| p.is_file()),
-        codex: providers::codex_plan::sessions_dir(None).is_some_and(|p| p.is_dir()),
+        codex: providers::codex_plan::auth_path(None).is_some_and(|p| p.is_file())
+            || providers::codex_plan::sessions_dir(None).is_some_and(|p| p.is_dir()),
     }
 }

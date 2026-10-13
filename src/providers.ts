@@ -35,14 +35,14 @@ export const PROVIDERS: ProviderInfo[] = [
   {
     kind: "codex_plan",
     name: "ChatGPT plan",
-    tagline: "Plus / Pro · Codex limits",
+    tagline: "Plus / Pro · live Codex limits",
     color: "#10a37f",
     glyph: "G",
     secret: "none",
     budget: false,
     folder: { label: "Codex folder", placeholder: "Default: %USERPROFILE%\\.codex" },
     help:
-      "OpenAI has no public API for ChatGPT plan limits. UsageCheck reads the limits the Codex CLI saves on this PC after each message. Nothing is sent anywhere.",
+      "Uses the ChatGPT sign-in from the Codex CLI on this PC (run `codex login` once) to read live limits, the same ones Codex shows in /status. The sign-in is only read, never changed, and is sent only to chatgpt.com.",
     link: { text: "Get Codex CLI", url: "https://developers.openai.com/codex/cli" },
   },
   {
