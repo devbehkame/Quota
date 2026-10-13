@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6d7bff"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="216" fill="url(#tile)"/>
+  <rect x="48" y="48" width="928" height="928" rx="216" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="8"/>
+  <!-- gauge track (270°) and value -->
+  <circle cx="512" cy="560" r="268" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="88"
+          stroke-dasharray="1263 1684" transform="rotate(135 512 560)" stroke-linecap="round"/>
+  <circle cx="512" cy="560" r="268" fill="none" stroke="#ffffff" stroke-width="88"
+          stroke-dasharray="860 1684" transform="rotate(135 512 560)" stroke-linecap="round"/>
+  <line x1="512" y1="560" x2="660" y2="420" stroke="#ffffff" stroke-width="64" stroke-linecap="round"/>
+  <circle cx="512" cy="560" r="70" fill="#ffffff"/>
+</svg>

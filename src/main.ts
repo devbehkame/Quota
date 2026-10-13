@@ -81,6 +81,118 @@ async function moveAccount(id: string, delta: number) {
   }
 }
 
+async function saveOrder(ids: string[]) {
+  if (!view) return;
+  const byId = new Map(view.accounts.map((a) => [a.id, a]));
+  view.accounts = ids.map((id) => byId.get(id)).filter((a): a is Account => !!a);
+  try {
+    await api.reorderAccounts(ids);
+  } catch (e) {
+    toast(errorText(e), "error");
+  }
+}
+
+/**
+ * Drag a card by any non-interactive part of it to reorder the grid. A floating
+ * copy follows the pointer while the other cards slide into place (FLIP).
+ */
+function startCardDrag(e: PointerEvent) {
+  const card = (e.currentTarget as HTMLElement | null)?.closest<HTMLElement>(".card");
+  if (!card || e.button !== 0 || dragging) return;
+  if ((e.target as HTMLElement).closest("button, a, input, select, textarea, .callout p")) return;
+  const grid = card.parentElement!;
+  const startX = e.clientX;
+  const startY = e.clientY;
+  let ghost: HTMLElement | null = null;
+  let offX = 0;
+  let offY = 0;
+
+  const cards = () => [...grid.querySelectorAll<HTMLElement>(".card[data-id]")];
+
+  /** Animates every card from where it was to where the layout now puts it. */
+  const flip = (mutate: () => void) => {
+    const before = new Map(cards().map((c) => [c, c.getBoundingClientRect()]));
+    mutate();
+    for (const c of cards()) {
+      const a = before.get(c);
+      if (!a || c === card) continue;
+      const b = c.getBoundingClientRect();
+      const dx = a.left - b.left;
+      const dy = a.top - b.top;
+      if (!dx && !dy) continue;
+      c.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], {
+        duration: 180,
+        easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      });
+    }
+  };
+
+  const begin = () => {
+    dragging = true;
+    closeMenu();
+    const r = card.getBoundingClientRect();
+    offX = startX - r.left;
+    offY = startY - r.top;
+    ghost = card.cloneNode(true) as HTMLElement;
+    ghost.classList.add("drag-ghost");
+    ghost.classList.remove("enter");
+    Object.assign(ghost.style, { width: `${r.width}px`, height: `${r.height}px`, left: "0", top: "0" });
+    document.body.append(ghost);
+    card.classList.add("placeholder");
+    document.body.classList.add("dragging");
+  };
+
+  const move = (ev: PointerEvent) => {
+    if (!ghost) {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+      begin();
+    }
+    ghost!.style.transform = `translate(${ev.clientX - offX}px, ${ev.clientY - offY}px) rotate(1deg) scale(1.02)`;
+    // Hit-test against where cards are laid out, not where their slide
+    // animation currently draws them, so the order can't flip back and forth.
+    const origin = grid.getBoundingClientRect();
+    const px = ev.clientX - origin.left;
+    const py = ev.clientY - origin.top;
+    const over = cards().find((c) => {
+      if (c === card) return false;
+      const x = c.offsetLeft - grid.offsetLeft;
+      const y = c.offsetTop - grid.offsetTop;
+      return px >= x && px <= x + c.offsetWidth && py >= y && py <= y + c.offsetHeight;
+    });
+    if (!over) return;
+    const list = cards();
+    const before = list.indexOf(card) > list.indexOf(over);
+    flip(() => (before ? over.before(card) : over.after(card)));
+  };
+
+  const end = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", end);
+    window.removeEventListener("pointercancel", end);
+    if (!ghost) return; // it was a click, not a drag
+    const r = card.getBoundingClientRect();
+    const g = ghost;
+    g.animate([{ transform: g.style.transform }, { transform: `translate(${r.left}px, ${r.top}px)` }], {
+      duration: 150,
+      easing: "ease-out",
+    }).onfinish = () => {
+      g.remove();
+      card.classList.remove("placeholder");
+      document.body.classList.remove("dragging");
+      dragging = false;
+      void saveOrder(cards().map((c) => c.dataset.id!));
+      if (renderPending) {
+        renderPending = false;
+        render();
+      }
+    };
+  };
+
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+}
+
 async function removeAccount(a: Account) {
   const ok = await confirmDialog(
     `Remove “${a.label}”?`,
@@ -104,8 +216,16 @@ async function removeAccount(a: Account) {
 /** Cards that have already been on screen (they only slide in the first time). */
 const shown = new Set<string>();
 
+/** Set while a card is being dragged; redraws wait until it's dropped. */
+let dragging = false;
+let renderPending = false;
+
 function render() {
   if (!view) return;
+  if (dragging) {
+    renderPending = true;
+    return;
+  }
   closeMenu();
   root.replaceChildren(topbar(), view.accounts.length ? grid() : emptyState());
   for (const a of view.accounts) shown.add(a.id);
@@ -125,7 +245,7 @@ function topbar(): HTMLElement {
     h(
       "div",
       { class: "brand" },
-      h("div", { class: "logo" }, icon("gauge", 22)),
+      h("img", { class: "logo", src: "/logo.svg", alt: "" }),
       h(
         "div",
         null,
@@ -176,7 +296,7 @@ function emptyState(): HTMLElement {
   return h(
     "main",
     { class: "empty" },
-    h("div", { class: "empty-art" }, icon("gauge", 56)),
+    h("div", { class: "empty-art" }, h("img", { src: "/logo.svg", alt: "" })),
     h("h2", null, "Track every AI plan in one place"),
     h(
       "p",
@@ -216,7 +336,7 @@ function grid(): HTMLElement {
 }
 
 function avatar(p: ProviderInfo): HTMLElement {
-  return h("div", { class: "avatar", style: { "--accent": p.color }, title: p.name }, logo(p.kind, 20));
+  return h("div", { class: "avatar", style: { "--accent": p.color }, title: p.name }, logo(p.kind, 18));
 }
 
 function card(a: Account): HTMLElement {
@@ -268,7 +388,12 @@ function card(a: Account): HTMLElement {
 
   return h(
     "article",
-    { class: `card${isBusy ? " busy" : ""}${shown.has(a.id) ? "" : " enter"}`, style: { "--accent": p.color } },
+    {
+      class: `card${isBusy ? " busy" : ""}${shown.has(a.id) ? "" : " enter"}`,
+      style: { "--accent": p.color },
+      "data-id": a.id,
+      onpointerdown: (e: PointerEvent) => startCardDrag(e),
+    },
     h(
       "div",
       { class: "card-head" },

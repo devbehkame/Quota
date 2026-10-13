@@ -49,7 +49,7 @@ function render() {
     h(
       "div",
       { class: "card-head" },
-      h("div", { class: "avatar", style: { "--accent": p.color } }, logo(a.kind, 20)),
+      h("div", { class: "avatar", style: { "--accent": p.color } }, logo(a.kind, 18)),
       h(
         "div",
         { class: "titles" },

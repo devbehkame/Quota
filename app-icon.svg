@@ -1,20 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1f2433"/>
-      <stop offset="1" stop-color="#0d0f16"/>
-    </linearGradient>
-    <linearGradient id="arc" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="0.6" stop-color="#60a5fa"/>
-      <stop offset="1" stop-color="#a78bfa"/>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6d7bff"/>
+      <stop offset="1" stop-color="#4338ca"/>
     </linearGradient>
   </defs>
-  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
-  <circle cx="512" cy="540" r="290" fill="none" stroke="#2b3245" stroke-width="72"
-          stroke-dasharray="1366 1822" transform="rotate(135 512 540)" stroke-linecap="round"/>
-  <circle cx="512" cy="540" r="290" fill="none" stroke="url(#arc)" stroke-width="72"
-          stroke-dasharray="956 1822" transform="rotate(135 512 540)" stroke-linecap="round"/>
-  <line x1="512" y1="540" x2="672" y2="392" stroke="#f4f6fb" stroke-width="44" stroke-linecap="round"/>
-  <circle cx="512" cy="540" r="54" fill="#f4f6fb"/>
+  <rect x="48" y="48" width="928" height="928" rx="216" fill="url(#tile)"/>
+  <rect x="48" y="48" width="928" height="928" rx="216" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="8"/>
+  <!-- gauge track (270°) and value -->
+  <circle cx="512" cy="560" r="268" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="88"
+          stroke-dasharray="1263 1684" transform="rotate(135 512 560)" stroke-linecap="round"/>
+  <circle cx="512" cy="560" r="268" fill="none" stroke="#ffffff" stroke-width="88"
+          stroke-dasharray="860 1684" transform="rotate(135 512 560)" stroke-linecap="round"/>
+  <line x1="512" y1="560" x2="660" y2="420" stroke="#ffffff" stroke-width="64" stroke-linecap="round"/>
+  <circle cx="512" cy="560" r="70" fill="#ffffff"/>
 </svg>

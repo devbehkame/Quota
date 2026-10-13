@@ -19,19 +19,15 @@ body {
   width: 300px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
   overflow: hidden;
   position: relative;
   cursor: default;
 }
 
-.hovercard::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: var(--accent);
+.hovercard .card-head {
+  cursor: default;
 }
 
 .hovercard .card-head {
