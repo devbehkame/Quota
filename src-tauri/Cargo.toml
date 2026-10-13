@@ -36,6 +36,14 @@ windows-sys = { version = "0.60", features = [
   "Win32_System_Registry",
   "Win32_UI_WindowsAndMessaging",
 ] }
+# UI Automation, to see where the taskbar's own buttons are.
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
+  "Win32_UI_Accessibility",
+] }
 
 [target.'cfg(not(windows))'.dependencies]
 keyring = { version = "3.6" }

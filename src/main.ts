@@ -959,17 +959,8 @@ document.addEventListener("contextmenu", (e) => {
   if (!t.closest("input, textarea")) e.preventDefault();
 });
 window.addEventListener("resize", closeMenu);
-// Coming back to the window (e.g. from the tray) refreshes anything older than a minute.
-function refreshStale() {
-  if (!view || document.visibilityState !== "visible") return;
-  const cutoff = Date.now() - 60_000;
-  for (const a of view.accounts) {
-    const s = snaps.get(a.id);
-    if (!s || Date.parse(s.fetchedAt) < cutoff) void refreshOne(a.id);
-  }
-}
-window.addEventListener("focus", refreshStale);
-document.addEventListener("visibilitychange", refreshStale);
+// No refresh-on-focus here: the backend refreshes on the schedule in Settings
+// (and paces requests), so opening or clicking the window never re-fetches.
 
 /** Keeps whichever snapshot is newer (events can race the initial state load). */
 function mergeSnapshot(s: Snapshot) {

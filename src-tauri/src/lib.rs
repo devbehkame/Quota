@@ -36,6 +36,7 @@ pub fn run() {
                 config: Mutex::new(cfg),
                 snapshots: Mutex::new(HashMap::new()),
                 locks: Default::default(),
+                pace: Default::default(),
             });
             app.manage(widget::WidgetState::default());
             app.manage(hovercard::CardState::default());

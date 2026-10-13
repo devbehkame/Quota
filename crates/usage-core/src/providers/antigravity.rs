@@ -1,10 +1,11 @@
 //! Google Antigravity per-model quotas.
 //!
-//! Antigravity runs a local language server that the IDE itself asks for quota
-//! information. We find that process, read the per-session CSRF token from its
-//! command line, and call the same `GetUserStatus` method on 127.0.0.1. Nothing
-//! leaves the computer, and no Google credentials are touched. The IDE has to be
-//! running; when it isn't, the app keeps showing the last values it saw.
+//! Antigravity (the app, or its extension inside VS Code and other editors) runs
+//! a local language server that the editor asks for quota information. We find
+//! that process, read the per-session CSRF token from its command line, and call
+//! the same methods on 127.0.0.1. Nothing leaves the computer, and no Google
+//! credentials are touched. When Antigravity isn't running, the app keeps
+//! showing the last values it saw.
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -17,11 +18,12 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use crate::util::{num, timestamp};
 use crate::{Meter, Unit, Usage, UsageError};
 
-const METHOD_PATH: &str = "/exa.language_server_pb.LanguageServerService/GetUserStatus";
+const SERVICE: &str = "/exa.language_server_pb.LanguageServerService/";
+/// Newer builds answer the quota summary; older ones only the user status.
+const METHODS: [&str; 2] = ["RetrieveUserQuotaSummary", "GetUserStatus"];
 
 #[derive(Clone, Debug, PartialEq)]
 struct Server {
-    pid: u32,
     csrf: String,
     port: u16,
     tls: bool,
@@ -30,9 +32,18 @@ struct Server {
 /// The last server that answered, so later refreshes skip discovery.
 static LAST: Mutex<Option<Server>> = Mutex::new(None);
 
+/// A running Antigravity language server.
+#[derive(Debug)]
+struct Candidate {
+    pid: u32,
+    csrf: Option<String>,
+    ext_port: Option<u16>,
+    ext_csrf: Option<String>,
+}
+
 /// Antigravity is installed (as the app or as an editor extension) or running.
 pub fn detected() -> bool {
-    installed() || !find_processes().is_empty()
+    installed() || !scan().0.is_empty()
 }
 
 fn installed() -> bool {
@@ -45,45 +56,67 @@ pub async fn fetch() -> Result<Usage, UsageError> {
     let client = local_client();
     let cached = LAST.lock().unwrap().clone();
     if let Some(s) = cached {
-        if let Ok(v) = call(&client, &s).await {
-            return parse(&v).ok_or_else(|| UsageError::Parse("no quota data in the response".into()));
+        if let Some(u) = ask(&client, &s).await.and_then(|v| parse_any(&v)) {
+            return Ok(u);
         }
         *LAST.lock().unwrap() = None;
     }
 
-    let procs = find_processes();
-    if procs.is_empty() {
-        return Err(UsageError::Offline(
-            "Antigravity isn't running. Open Antigravity (or the editor it's installed in) to update these numbers.".into(),
-        ));
+    let (candidates, related) = scan();
+    if candidates.is_empty() {
+        let msg = if related.is_empty() {
+            "Antigravity isn't running. Open Antigravity (or the editor it's installed in) to update these numbers."
+                .to_string()
+        } else {
+            format!(
+                "Antigravity is running ({}), but its language server wasn't found yet. Open a folder in it and start a chat once, then refresh.",
+                related.join(", ")
+            )
+        };
+        return Err(UsageError::Offline(msg));
     }
-    for (pid, csrf, hint_port) in procs {
-        let mut ports = listening_ports(pid).await;
-        if let Some(p) = hint_port {
-            for cand in [p.saturating_add(1), p] {
-                if !ports.contains(&cand) {
-                    ports.push(cand);
+
+    let mut answered = false;
+    let mut no_token = 0;
+    for c in &candidates {
+        let mut tries: Vec<Server> = Vec::new();
+        if let Some(csrf) = &c.csrf {
+            for port in listening_ports(c.pid).await {
+                tries.push(Server { csrf: csrf.clone(), port, tls: true });
+                tries.push(Server { csrf: csrf.clone(), port, tls: false });
+            }
+        } else {
+            no_token += 1;
+        }
+        if let Some(port) = c.ext_port {
+            if let Some(csrf) = c.ext_csrf.as_ref().or(c.csrf.as_ref()) {
+                tries.push(Server { csrf: csrf.clone(), port, tls: false });
+            }
+        }
+        for s in tries {
+            if let Some(v) = ask(&client, &s).await {
+                answered = true;
+                if let Some(u) = parse_any(&v) {
+                    *LAST.lock().unwrap() = Some(s);
+                    return Ok(u);
                 }
             }
         }
-        for port in ports {
-            for tls in [true, false] {
-                let s = Server { pid, csrf: csrf.clone(), port, tls };
-                if let Ok(v) = call(&client, &s).await {
-                    if let Some(u) = parse(&v) {
-                        *LAST.lock().unwrap() = Some(s);
-                        return Ok(u);
-                    }
-                }
-            }
-        }
     }
-    Err(UsageError::Offline(
-        "Antigravity is open but not ready yet. Sign in inside Antigravity, then refresh.".into(),
-    ))
+
+    Err(UsageError::Offline(if answered {
+        "Connected to Antigravity, but it didn't report any quotas. Sign in inside Antigravity and send one message, then refresh."
+            .into()
+    } else if no_token == candidates.len() {
+        "Found Antigravity's language server, but it didn't expose a local access token, so its quotas can't be read."
+            .into()
+    } else {
+        "Found Antigravity's language server, but it didn't answer yet. Wait a few seconds after opening it, then refresh."
+            .into()
+    }))
 }
 
-/// Client for the IDE's loopback server only: it uses a self-signed certificate,
+/// Client for the editor's loopback server only: it uses a self-signed certificate,
 /// so verification is off. It is never used for any other host.
 fn local_client() -> reqwest::Client {
     reqwest::Client::builder()
@@ -96,100 +129,110 @@ fn local_client() -> reqwest::Client {
         .expect("TLS backend available")
 }
 
-async fn call(client: &reqwest::Client, s: &Server) -> Result<Value, UsageError> {
+/// Tries each method on one server; returns the first JSON reply.
+async fn ask(client: &reqwest::Client, s: &Server) -> Option<Value> {
     let scheme = if s.tls { "https" } else { "http" };
-    let url = format!("{scheme}://127.0.0.1:{}{METHOD_PATH}", s.port);
-    let resp = client
-        .post(url)
-        .header("content-type", "application/json")
-        .header("connect-protocol-version", "1")
-        .header("x-codeium-csrf-token", &s.csrf)
-        .json(&json!({ "metadata": { "ideName": "antigravity", "extensionName": "antigravity" } }))
-        .send()
-        .await?;
-    if !resp.status().is_success() {
-        return Err(UsageError::Http { status: resp.status().as_u16(), message: "language server refused".into() });
+    let body = json!({ "metadata": { "ideName": "antigravity", "extensionName": "antigravity", "locale": "en" } });
+    for method in METHODS {
+        let url = format!("{scheme}://127.0.0.1:{}{SERVICE}{method}", s.port);
+        let resp = client
+            .post(url)
+            .header("content-type", "application/json")
+            .header("connect-protocol-version", "1")
+            .header("x-codeium-csrf-token", &s.csrf)
+            .json(&body)
+            .send()
+            .await;
+        let Ok(resp) = resp else { return None }; // nothing listening: skip other methods
+        if resp.status().is_success() {
+            if let Ok(v) = resp.json::<Value>().await {
+                if parse_any(&v).is_some() {
+                    return Some(v);
+                }
+                // Answered without quotas; let the caller know it is the right server.
+                if method == METHODS[METHODS.len() - 1] {
+                    return Some(v);
+                }
+            }
+        }
     }
-    Ok(resp.json().await?)
+    None
 }
 
-/// Antigravity language-server processes: (pid, csrf token, extension port hint).
-fn find_processes() -> Vec<(u32, String, Option<u16>)> {
+fn parse_any(v: &Value) -> Option<Usage> {
+    parse_summary(v).or_else(|| parse(v))
+}
+
+/// Finds Antigravity language servers, plus the names of other Antigravity
+/// processes (for a helpful message when the server itself isn't up).
+fn scan() -> (Vec<Candidate>, Vec<String>) {
     let mut sys = System::new();
     sys.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
         ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always).with_exe(UpdateKind::Always),
     );
-    sys.processes()
-        .iter()
-        .filter_map(|(pid, p)| {
-            let name = p.name().to_string_lossy().to_ascii_lowercase();
-            if !name.contains("language_server") {
-                return None;
-            }
-            let mut args: Vec<String> = p.cmd().iter().map(|a| a.to_string_lossy().into_owned()).collect();
-            // When Antigravity runs inside another editor, its install path still names it.
-            if let Some(exe) = p.exe() {
-                args.push(exe.to_string_lossy().into_owned());
-            }
-            let (csrf, port) = parse_args(&args)?;
-            Some((pid.as_u32(), csrf, port))
-        })
-        .collect()
+    let mut candidates = Vec::new();
+    let mut related = Vec::new();
+    for (pid, p) in sys.processes() {
+        let name = p.name().to_string_lossy().to_string();
+        let mut args: Vec<String> = p.cmd().iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        // Inside another editor, the install path still names Antigravity.
+        if let Some(exe) = p.exe() {
+            args.push(exe.to_string_lossy().into_owned());
+        }
+        if !args.iter().any(|a| a.to_ascii_lowercase().contains("antigravity")) {
+            continue;
+        }
+        let lname = name.to_ascii_lowercase();
+        if lname.contains("language_server") || lname.contains("language-server") {
+            candidates.push(candidate(pid.as_u32(), &args));
+        } else if !related.contains(&name) && related.len() < 4 {
+            related.push(name);
+        }
+    }
+    (candidates, related)
 }
 
-/// Accepts the process only if it belongs to Antigravity (not another Codeium-based IDE).
-fn parse_args(args: &[String]) -> Option<(String, Option<u16>)> {
-    if !args.iter().any(|a| a.to_ascii_lowercase().contains("antigravity")) {
-        return None;
-    }
+fn candidate(pid: u32, args: &[String]) -> Candidate {
     let value = |flag: &str| -> Option<String> {
-        args.iter().enumerate().find_map(|(i, a)| {
-            if a == flag {
-                args.get(i + 1).cloned()
-            } else {
-                a.strip_prefix(&format!("{flag}=")).map(str::to_owned)
-            }
-        })
+        args.iter()
+            .enumerate()
+            .find_map(|(i, a)| {
+                if a == flag {
+                    args.get(i + 1).cloned()
+                } else {
+                    a.strip_prefix(&format!("{flag}=")).map(str::to_owned)
+                }
+            })
+            .filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_graphic()))
     };
-    let csrf = value("--csrf_token").filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_graphic()))?;
-    let port = value("--extension_server_port").and_then(|p| p.parse().ok());
-    Some((csrf, port))
+    Candidate {
+        pid,
+        csrf: value("--csrf_token"),
+        ext_port: value("--extension_server_port").and_then(|p| p.parse().ok()),
+        ext_csrf: value("--extension_server_csrf_token"),
+    }
 }
 
 /// Loopback TCP ports the process is listening on.
 async fn listening_ports(pid: u32) -> Vec<u16> {
     #[cfg(windows)]
-    let out = {
-        let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
-        crate::util::run_hidden(&format!("{root}\\System32\\NETSTAT.EXE"), &["-ano", "-p", "TCP"]).await
-    };
+    {
+        win_ports::listening(pid)
+    }
     #[cfg(not(windows))]
-    let out = crate::util::run_hidden("lsof", &["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", &pid.to_string()]).await;
-    out.map(|o| parse_ports(&o, pid)).unwrap_or_default()
+    {
+        let out = crate::util::run_hidden("lsof", &["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", &pid.to_string()]).await;
+        out.map(|o| parse_lsof(&o)).unwrap_or_default()
+    }
 }
 
-/// Parses `netstat -ano` (Windows) or `lsof` output for listening ports owned by `pid`.
-fn parse_ports(output: &str, pid: u32) -> Vec<u16> {
-    let pid_s = pid.to_string();
+#[cfg_attr(windows, allow(dead_code))]
+fn parse_lsof(output: &str) -> Vec<u16> {
     let mut ports = Vec::new();
-    for line in output.lines() {
-        let cols: Vec<&str> = line.split_whitespace().collect();
-        let is_netstat = cols.len() >= 5 && cols[0].eq_ignore_ascii_case("TCP");
-        let local = if is_netstat {
-            if !cols[3].eq_ignore_ascii_case("LISTENING") || cols[4] != pid_s {
-                continue;
-            }
-            cols[1]
-        } else if line.contains("(LISTEN)") {
-            match cols.iter().rev().nth(1) {
-                Some(c) => c,
-                None => continue,
-            }
-        } else {
-            continue;
-        };
+    for line in output.lines().filter(|l| l.contains("(LISTEN)")) {
+        let Some(local) = line.split_whitespace().rev().nth(1) else { continue };
         let Some((host, port)) = local.rsplit_once(':') else { continue };
         let loopback = matches!(host, "127.0.0.1" | "0.0.0.0" | "*" | "[::]" | "[::1]" | "localhost");
         if let (true, Ok(p)) = (loopback, port.parse::<u16>()) {
@@ -199,6 +242,101 @@ fn parse_ports(output: &str, pid: u32) -> Vec<u16> {
         }
     }
     ports
+}
+
+/// Asks Windows directly for the process's listening sockets (no `netstat`,
+/// whose output is translated on non-English Windows).
+#[cfg(windows)]
+mod win_ports {
+    use std::ffi::c_void;
+    use windows_sys::Win32::NetworkManagement::IpHelper::{
+        GetExtendedTcpTable, MIB_TCP6ROW_OWNER_PID, MIB_TCPROW_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
+    };
+    use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_INET6};
+
+    fn table(family: u16) -> Vec<u8> {
+        let mut size: u32 = 0;
+        // SAFETY: first call only reports the needed size; second fills our buffer of that size.
+        unsafe {
+            GetExtendedTcpTable(std::ptr::null_mut(), &mut size, 0, family as u32, TCP_TABLE_OWNER_PID_LISTENER, 0);
+            let mut buf = vec![0u8; size as usize + 1024];
+            size = buf.len() as u32;
+            if GetExtendedTcpTable(buf.as_mut_ptr() as *mut c_void, &mut size, 0, family as u32, TCP_TABLE_OWNER_PID_LISTENER, 0) != 0 {
+                return Vec::new();
+            }
+            buf
+        }
+    }
+
+    fn rows<T: Copy>(buf: &[u8]) -> Vec<T> {
+        if buf.len() < 4 {
+            return Vec::new();
+        }
+        let n = u32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+        // Rows start after the u32 count, aligned to 4 bytes.
+        let start = 4;
+        let size = std::mem::size_of::<T>();
+        (0..n)
+            .filter_map(|i| {
+                let off = start + i * size;
+                // SAFETY: bounds checked; read_unaligned copes with any alignment.
+                (off + size <= buf.len()).then(|| unsafe { std::ptr::read_unaligned(buf[off..].as_ptr() as *const T) })
+            })
+            .collect()
+    }
+
+    pub fn listening(pid: u32) -> Vec<u16> {
+        let mut ports = Vec::new();
+        let mut add = |raw: u32| {
+            let p = u16::from_be((raw & 0xffff) as u16);
+            if p != 0 && !ports.contains(&p) {
+                ports.push(p);
+            }
+        };
+        for r in rows::<MIB_TCPROW_OWNER_PID>(&table(AF_INET)) {
+            // Only sockets reachable on 127.0.0.1: loopback or any-address.
+            let loopback_or_any = r.dwLocalAddr == 0 || (r.dwLocalAddr & 0xff) == 127;
+            if r.dwOwningPid == pid && loopback_or_any {
+                add(r.dwLocalPort);
+            }
+        }
+        for r in rows::<MIB_TCP6ROW_OWNER_PID>(&table(AF_INET6)) {
+            if r.dwOwningPid == pid {
+                add(r.dwLocalPort);
+            }
+        }
+        ports
+    }
+}
+
+/// Newer builds: `{ response: { groups: [{ displayName, buckets: [{ displayName,
+/// remaining: { remainingFraction }, description, resetTime? }] }] } }`.
+pub(crate) fn parse_summary(v: &Value) -> Option<Usage> {
+    let groups = [&v["response"]["groups"], &v["groups"], &v["summary"]["groups"]]
+        .into_iter()
+        .find_map(|g| g.as_array())?;
+    let mut meters = Vec::new();
+    for g in groups {
+        let group = g["displayName"].as_str().unwrap_or_default().trim();
+        for b in g["buckets"].as_array().into_iter().flatten() {
+            let bucket = b["displayName"].as_str().or(b["bucketId"].as_str()).unwrap_or_default().trim();
+            let label = match (group.is_empty(), bucket.is_empty()) {
+                (false, false) => format!("{group} · {bucket}"),
+                (false, true) => group.to_owned(),
+                (true, false) => bucket.to_owned(),
+                (true, true) => continue,
+            };
+            let reset = timestamp(&b["resetTime"]).or_else(|| timestamp(&b["remaining"]["resetTime"]));
+            // Proto3 omits 0.0, so a missing fraction on a bucket means "used up".
+            let fraction = num(&b["remaining"]["remainingFraction"]).unwrap_or(0.0).clamp(0.0, 1.0);
+            let mut m = Meter::percent(label, (1.0 - fraction) * 100.0, reset);
+            if let Some(d) = b["description"].as_str().filter(|d| !d.trim().is_empty()) {
+                m = m.with_detail(d.trim());
+            }
+            meters.push(m);
+        }
+    }
+    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec![] })
 }
 
 /// Remaining fraction, reset time and the model labels sharing one quota.
@@ -298,17 +436,36 @@ mod tests {
     #[test]
     fn reads_process_args() {
         let a = |s: &str| s.split(' ').map(str::to_owned).collect::<Vec<_>>();
-        let (t, p) = parse_args(&a("language_server_windows_x64.exe --app_data_dir antigravity --csrf_token abc-123 --extension_server_port 52100")).unwrap();
-        assert_eq!((t.as_str(), p), ("abc-123", Some(52100)));
-        assert!(parse_args(&a("language_server --app_data_dir windsurf --csrf_token x")).is_none());
-        assert_eq!(parse_args(&a("ls --app_data_dir=antigravity --csrf_token=tok")).unwrap().0, "tok");
+        let c = candidate(1, &a("language_server_windows_x64.exe --app_data_dir antigravity-ide --csrf_token abc-123 --extension_server_port 52100 --extension_server_csrf_token e1"));
+        assert_eq!(c.csrf.as_deref(), Some("abc-123"));
+        assert_eq!(c.ext_port, Some(52100));
+        assert_eq!(c.ext_csrf.as_deref(), Some("e1"));
+        let c = candidate(1, &a("ls --app_data_dir=antigravity --csrf_token=tok"));
+        assert_eq!(c.csrf.as_deref(), Some("tok"));
+        assert_eq!(candidate(1, &a("ls --csrf_token")).csrf, None);
     }
 
     #[test]
-    fn parses_netstat_and_lsof() {
-        let netstat = "\n  Proto  Local Address          Foreign Address        State           PID\n  TCP    127.0.0.1:52101        0.0.0.0:0              LISTENING       4242\n  TCP    127.0.0.1:52102        0.0.0.0:0              LISTENING       14242\n  TCP    0.0.0.0:52103          0.0.0.0:0              LISTENING       4242\n  TCP    127.0.0.1:52101        127.0.0.1:60000        ESTABLISHED     4242\n  TCP    192.168.1.5:7000       0.0.0.0:0              LISTENING       4242\n";
-        assert_eq!(parse_ports(netstat, 4242), vec![52101, 52103]);
-        let lsof = "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nlanguage 4242 me 12u IPv4 0x1 0t0 TCP 127.0.0.1:52101 (LISTEN)\n";
-        assert_eq!(parse_ports(lsof, 4242), vec![52101]);
+    fn parses_quota_summary() {
+        let v = json!({"response": {"groups": [
+            {"displayName": "Gemini 3 Pro", "buckets": [
+                {"bucketId": "5h", "displayName": "5-hour", "remaining": {"remainingFraction": 0.75}, "description": "Resets in 2h"},
+                {"bucketId": "wk", "displayName": "Weekly", "remaining": {}}
+            ]},
+            {"displayName": "Claude", "buckets": [{"displayName": "5-hour", "remaining": {"remainingFraction": 1}}]}
+        ]}});
+        let u = parse_summary(&v).unwrap();
+        assert_eq!(u.meters.len(), 3);
+        assert_eq!(u.meters[0].label, "Gemini 3 Pro · 5-hour");
+        assert_eq!(u.meters[0].remaining, Some(75.0));
+        assert_eq!(u.meters[0].detail.as_deref(), Some("Resets in 2h"));
+        assert_eq!(u.meters[1].remaining, Some(0.0));
+        assert!(parse_summary(&json!({"userStatus": {}})).is_none());
+    }
+
+    #[test]
+    fn parses_lsof() {
+        let lsof = "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nlanguage 4242 me 12u IPv4 0x1 0t0 TCP 127.0.0.1:52101 (LISTEN)\nlanguage 4242 me 13u IPv4 0x1 0t0 TCP 10.0.0.2:7000 (LISTEN)\n";
+        assert_eq!(parse_lsof(lsof), vec![52101]);
     }
 }

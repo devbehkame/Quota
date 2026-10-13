@@ -24,7 +24,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             "show" => show_main(app),
             "refresh" => {
                 let app = app.clone();
-                tauri::async_runtime::spawn(async move { crate::refresh::refresh_all(&app).await });
+                tauri::async_runtime::spawn(async move { crate::refresh::refresh_all(&app, crate::refresh::Trigger::Manual).await });
             }
             "widget" => toggle_widget(app),
             "quit" => app.exit(0),

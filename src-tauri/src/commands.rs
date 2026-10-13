@@ -18,6 +18,7 @@ pub struct AppState {
     pub config: Mutex<Config>,
     pub snapshots: Mutex<HashMap<String, Snapshot>>,
     pub locks: refresh::AccountLocks,
+    pub pace: refresh::Pacing,
 }
 
 impl AppState {
@@ -232,7 +233,7 @@ pub fn reorder_accounts(state: State<'_, AppState>, ids: Vec<String>) -> Result<
 
 #[tauri::command]
 pub async fn refresh_account(app: AppHandle, id: String) -> Result<Snapshot, String> {
-    refresh::refresh(&app, &id).await
+    refresh::refresh(&app, &id, refresh::Trigger::Manual).await
 }
 
 /// Checks a form before saving. For an existing account, an empty key field means
@@ -286,7 +287,7 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
 /// Re-checks all accounts now (toolbar button, tray menu, Ctrl+R).
 #[tauri::command]
 pub async fn refresh_all(app: AppHandle) {
-    refresh::refresh_all(&app).await;
+    refresh::refresh_all(&app, refresh::Trigger::Manual).await;
 }
 
 #[tauri::command]

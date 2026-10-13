@@ -4869,6 +4869,7 @@ dependencies = [
  "sysinfo",
  "thiserror 2.0.21",
  "tokio",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4889,6 +4890,7 @@ dependencies = [
  "tokio",
  "usage-core",
  "uuid",
+ "windows",
  "windows-sys 0.60.2",
  "zeroize",
 ]
