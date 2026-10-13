@@ -249,7 +249,7 @@ fn target_position(app: &AppHandle, size: PhysicalSize<u32>) -> (i32, i32) {
 }
 
 #[cfg(windows)]
-fn set_bounds(window: &WebviewWindow, pos: (i32, i32), size: PhysicalSize<u32>) {
+pub fn set_bounds(window: &WebviewWindow, pos: (i32, i32), size: PhysicalSize<u32>) {
     match win::raw(window) {
         Some(h) => win::set_bounds(h, pos, (size.width as i32, size.height as i32)),
         None => {
@@ -260,7 +260,7 @@ fn set_bounds(window: &WebviewWindow, pos: (i32, i32), size: PhysicalSize<u32>) 
 }
 
 #[cfg(not(windows))]
-fn set_bounds(window: &WebviewWindow, pos: (i32, i32), size: PhysicalSize<u32>) {
+pub fn set_bounds(window: &WebviewWindow, pos: (i32, i32), size: PhysicalSize<u32>) {
     let _ = window.set_size(size);
     let _ = window.set_position(PhysicalPosition::new(pos.0, pos.1));
 }
@@ -448,13 +448,16 @@ mod win {
     use windows_sys::Win32::Foundation::{ERROR_SUCCESS, HWND, RECT};
     use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
     use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    use windows_sys::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
     use windows_sys::Win32::UI::Shell::{
         SHQueryUserNotificationState, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        FindWindowExW, FindWindowW, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowLongPtrW, GetWindowRect,
-        IsWindow, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GW_HWNDPREV, HWND_TOPMOST,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        DispatchMessageW, FindWindowExW, FindWindowW, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
+        GetWindowRect, IsWindow, IsWindowVisible, MsgWaitForMultipleObjects, PeekMessageW, SetWindowLongPtrW,
+        SetWindowPos, TranslateMessage, EVENT_OBJECT_HIDE, EVENT_OBJECT_SHOW, EVENT_SYSTEM_FOREGROUND, GWL_EXSTYLE,
+        GW_HWNDPREV, HWND_TOPMOST, MSG, PM_REMOVE, QS_ALLINPUT, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+        SWP_NOSIZE, SWP_NOZORDER, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
 
     use super::Rect;
@@ -623,22 +626,79 @@ mod win {
         false
     }
 
-    /// Puts the widget back in front within a few frames whenever the taskbar
-    /// covers it, instead of waiting for the keeper's next round. Checking the
-    /// stacking order is a handful of cheap calls; it only re-raises when needed.
+    thread_local! {
+        /// The widget this thread guards (the hook callback has no user data).
+        static GUARDED: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
+    }
+
+    fn restore_if_covered(h: HWND) {
+        // SAFETY: plain queries on our own window handle.
+        if unsafe { IsWindowVisible(h) } != 0 && taskbar_above(h) {
+            raise(h);
+        }
+    }
+
+    unsafe extern "system" fn on_shell_event(
+        _hook: HWINEVENTHOOK,
+        _event: u32,
+        _hwnd: HWND,
+        id_object: i32,
+        _id_child: i32,
+        _thread: u32,
+        _time: u32,
+    ) {
+        if id_object == 0 {
+            let h = GUARDED.with(|g| g.get()) as HWND;
+            if !h.is_null() {
+                restore_if_covered(h);
+            }
+        }
+    }
+
+    /// Keeps the widget in front of the taskbar, which Windows 11 lifts to the
+    /// front when you hover or click it (or open the tray overflow). It reacts
+    /// the moment another window becomes active, shows or hides, so the widget
+    /// doesn't blink, and also checks every 50 ms for anything those events miss.
+    /// It only re-raises when the taskbar is actually above the widget.
     pub fn spawn_zorder_guard(own: HWND) {
         let own = own as isize;
-        std::thread::spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::spawn(move || {
+            GUARDED.with(|g| g.set(own));
             let h = own as HWND;
-            // SAFETY: plain queries on our own window handle; IsWindow ends the
-            // loop once the widget has been closed.
+            // SAFETY: out-of-context WinEvent hooks call back on this thread while it
+            // pumps messages below; they're removed before the thread ends.
             unsafe {
-                if IsWindow(h) == 0 {
-                    return;
+                let hooks = [
+                    SetWinEventHook(
+                        EVENT_SYSTEM_FOREGROUND,
+                        EVENT_SYSTEM_FOREGROUND,
+                        null_mut(),
+                        Some(on_shell_event),
+                        0,
+                        0,
+                        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+                    ),
+                    SetWinEventHook(
+                        EVENT_OBJECT_SHOW,
+                        EVENT_OBJECT_HIDE,
+                        null_mut(),
+                        Some(on_shell_event),
+                        0,
+                        0,
+                        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+                    ),
+                ];
+                let mut msg: MSG = zeroed();
+                while IsWindow(h) != 0 {
+                    MsgWaitForMultipleObjects(0, null(), 0, 50, QS_ALLINPUT);
+                    while PeekMessageW(&mut msg, null_mut(), 0, 0, PM_REMOVE) != 0 {
+                        TranslateMessage(&msg);
+                        DispatchMessageW(&msg);
+                    }
+                    restore_if_covered(h);
                 }
-                if IsWindowVisible(h) != 0 && taskbar_above(h) {
-                    raise(h);
+                for hook in hooks.into_iter().filter(|k| !k.is_null()) {
+                    UnhookWinEvent(hook);
                 }
             }
         });

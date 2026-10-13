@@ -76,8 +76,12 @@ function render() {
 }
 
 async function load() {
-  if (!currentId) return;
-  view = await invoke<CardView>("card_state", { accountId: currentId });
+  const id = currentId;
+  if (!id) return;
+  const next = await invoke<CardView>("card_state", { accountId: id });
+  // Moving quickly between items: ignore an answer for an item already left.
+  if (id !== currentId) return;
+  view = next;
   render();
 }
 

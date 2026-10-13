@@ -8,7 +8,8 @@ use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
 };
 use usage_core::{Account, Snapshot};
 
@@ -105,16 +106,27 @@ pub fn card_layout(app: AppHandle, window: WebviewWindow, width: f64, height: f6
     if window.label() != LABEL {
         return;
     }
-    let _ = window.set_size(LogicalSize::new(width.clamp(200.0, 420.0).ceil(), height.clamp(60.0, 640.0).ceil()));
+    let size = LogicalSize::new(width.clamp(200.0, 420.0).ceil(), height.clamp(60.0, 640.0).ceil());
+    let size: PhysicalSize<u32> = size.to_physical(window.scale_factor().unwrap_or(1.0));
     let cs = app.state::<CardState>();
     let hovered = cs.over_widget.load(Ordering::Relaxed) || cs.over_card.load(Ordering::Relaxed);
     // A refresh re-renders the card too; it must only appear if the pointer is
     // really there (a missed "pointer left" event would otherwise pop it up on
     // every update).
     if hovered && pointer_over(&app) {
-        position(&app, &window);
+        // Place it using the new size: the window's current size is still the
+        // previous card's, which put a taller card too low, over the widget.
+        match position_for(&app, size) {
+            Some(pos) => widget::set_bounds(&window, pos, size),
+            None => {
+                let _ = window.set_size(size);
+            }
+        }
         let _ = window.show();
-    } else if !hovered {
+    } else {
+        let _ = window.set_size(size);
+    }
+    if !hovered {
         let _ = window.hide();
     }
 }
@@ -166,10 +178,18 @@ fn schedule_hide(app: &AppHandle) {
     });
 }
 
-/// Above the hovered item (or below it when the taskbar is at the top), kept on screen.
+/// Moves the card above the hovered item at its current size.
 fn position(app: &AppHandle, card: &WebviewWindow) {
-    let Some(w) = app.get_webview_window(widget::LABEL) else { return };
-    let (Ok(wpos), Ok(wsize), Ok(csize)) = (w.outer_position(), w.outer_size(), card.outer_size()) else { return };
+    let Ok(size) = card.outer_size() else { return };
+    if let Some((x, y)) = position_for(app, size) {
+        let _ = card.set_position(PhysicalPosition::new(x, y));
+    }
+}
+
+/// Above the hovered item (or below it when the taskbar is at the top), kept on screen.
+fn position_for(app: &AppHandle, csize: PhysicalSize<u32>) -> Option<(i32, i32)> {
+    let w = app.get_webview_window(widget::LABEL)?;
+    let (Ok(wpos), Ok(wsize)) = (w.outer_position(), w.outer_size()) else { return None };
     let scale = w.scale_factor().unwrap_or(1.0);
     let offset = app.state::<CardState>().target.lock().unwrap().as_ref().map(|t| t.1).unwrap_or(0.0);
     let (cw, ch) = (csize.width as i32, csize.height as i32);
@@ -183,5 +203,5 @@ fn position(app: &AppHandle, card: &WebviewWindow) {
         }
         x = x.min(mp.x + ms.width as i32 - cw - GAP).max(mp.x + GAP);
     }
-    let _ = card.set_position(PhysicalPosition::new(x, y));
+    Some((x, y))
 }
