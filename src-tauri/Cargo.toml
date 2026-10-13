@@ -34,6 +34,7 @@ windows-sys = { version = "0.60", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_System_Registry",
+  "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
 # UI Automation, to see where the taskbar's own buttons are.

@@ -89,6 +89,10 @@ fn create(app: &AppHandle) -> tauri::Result<()> {
         .visible(false)
         .build()?;
     make_tool_window(&w);
+    #[cfg(windows)]
+    if let Some(h) = win::raw(&w) {
+        win::spawn_zorder_guard(h);
+    }
     if let Err(e) = crate::hovercard::create(app) {
         eprintln!("could not create the widget's hover card: {e}");
     }
@@ -444,10 +448,13 @@ mod win {
     use windows_sys::Win32::Foundation::{ERROR_SUCCESS, HWND, RECT};
     use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
     use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    use windows_sys::Win32::UI::Shell::{
+        SHQueryUserNotificationState, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        FindWindowExW, FindWindowW, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
-        SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
-        SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        FindWindowExW, FindWindowW, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowLongPtrW, GetWindowRect,
+        IsWindow, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GW_HWNDPREV, HWND_TOPMOST,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
 
     use super::Rect;
@@ -598,8 +605,61 @@ mod win {
         }
     }
 
+    /// Whether the taskbar is currently stacked above `own` (Windows 11 lifts it
+    /// to the front when you hover or click it).
+    fn taskbar_above(own: HWND) -> bool {
+        let Some(bar) = bar_hwnd() else { return false };
+        let mut h = own;
+        // SAFETY: GetWindow only reads the window list; a stale handle returns null.
+        for _ in 0..1024 {
+            h = unsafe { GetWindow(h, GW_HWNDPREV) };
+            if h.is_null() {
+                return false;
+            }
+            if h == bar {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Puts the widget back in front within a few frames whenever the taskbar
+    /// covers it, instead of waiting for the keeper's next round. Checking the
+    /// stacking order is a handful of cheap calls; it only re-raises when needed.
+    pub fn spawn_zorder_guard(own: HWND) {
+        let own = own as isize;
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let h = own as HWND;
+            // SAFETY: plain queries on our own window handle; IsWindow ends the
+            // loop once the widget has been closed.
+            unsafe {
+                if IsWindow(h) == 0 {
+                    return;
+                }
+                if IsWindowVisible(h) != 0 && taskbar_above(h) {
+                    raise(h);
+                }
+            }
+        });
+    }
+
+    /// Whether the shell itself considers a full-screen app to be running: the
+    /// same signal that makes the taskbar step aside. Shell flyouts (tray
+    /// overflow, Start, Quick Settings) never count, even though some of them
+    /// are invisible windows covering the whole screen.
+    fn shell_reports_fullscreen() -> bool {
+        let mut state = 0;
+        // SAFETY: writes one integer into `state`.
+        let hr = unsafe { SHQueryUserNotificationState(&mut state) };
+        hr >= 0 && matches!(state, QUNS_BUSY | QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE)
+    }
+
     /// True when the foreground window fills its whole monitor (games, videos, slides).
     pub fn fullscreen_app_active(own: HWND) -> bool {
+        if !shell_reports_fullscreen() {
+            return false;
+        }
         // SAFETY: read-only queries on the foreground window; buffers are sized correctly.
         unsafe {
             let fg = GetForegroundWindow();
@@ -609,7 +669,21 @@ mod win {
             let mut buf = [0u16; 64];
             let n = GetClassNameW(fg, buf.as_mut_ptr(), buf.len() as i32);
             let class = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
-            if matches!(class.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
+            if matches!(
+                class.as_str(),
+                "Progman"
+                    | "WorkerW"
+                    | "Shell_TrayWnd"
+                    | "Shell_SecondaryTrayWnd"
+                    | "NotifyIconOverflowWindow"
+                    | "TopLevelWindowForOverflowXamlIsland"
+                    | "XamlExplorerHostIslandWindow"
+                    | "Windows.UI.Core.CoreWindow"
+                    | "ControlCenterWindow"
+                    | "Shell_InputSwitchTopLevelWindow"
+                    | "TaskListThumbnailWnd"
+                    | "Xaml_WindowedPopupClass"
+            ) {
                 return false;
             }
             let Some((l, t, r, b)) = rect_of(fg) else { return false };
