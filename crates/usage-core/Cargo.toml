@@ -1,0 +1,18 @@
+[package]
+name = "usage-core"
+description = "Provider clients that fetch remaining usage for AI accounts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+dirs = "6"
+futures = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "http2", "charset"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

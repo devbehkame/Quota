@@ -1,0 +1,32 @@
+[package]
+name = "usagecheck"
+description = "See how much usage is left on your Claude, ChatGPT and API accounts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "usagecheck_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+usage-core = { path = "../crates/usage-core" }
+tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2.7"
+tauri-plugin-opener = "2.7"
+tauri-plugin-single-instance = "2.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures = "0.3"
+uuid = { version = "1", features = ["v4"] }
+zeroize = "1"
+
+# Windows Credential Manager on Windows; other targets only build for development.
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[target.'cfg(not(windows))'.dependencies]
+keyring = { version = "3.6" }
