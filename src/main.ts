@@ -924,7 +924,7 @@ async function openSettings() {
   );
 
   const interval = dropdown(
-    [0, 1, 2, 5, 10, 15, 30, 60].map((m) => ({
+    [0, 1, 2, 3, 4, 5, 10, 15, 30, 60].map((m) => ({
       value: String(m),
       label: m === 0 ? "Off" : m === 1 ? "Every minute" : `Every ${m} minutes`,
     })),
