@@ -1303,6 +1303,10 @@ select.input option {
   font-size: 13px;
 }
 
+.update-line {
+  font-size: 13px;
+}
+
 .slot-pickers {
   display: flex;
   align-items: center;

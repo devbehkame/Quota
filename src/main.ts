@@ -1011,7 +1011,7 @@ function updateText(u: UpdateStatus): string {
     case "error":
       return u.message ?? "Couldn't check for updates.";
     default:
-      return `Version ${u.currentVersion}. Checks every 5 minutes.`;
+      return `You're on the latest version (${u.currentVersion}).`;
   }
 }
 
@@ -1023,7 +1023,7 @@ async function updateSettings(): Promise<HTMLElement> {
   } catch {
     /* not available in dev */
   }
-  const line = h("small", { class: "hint", "aria-live": "polite" }, status ? updateText(status) : "");
+  const line = h("div", { class: "update-line", "aria-live": "polite" }, status ? updateText(status) : "");
   updateLine = line;
   const checkBtn = h(
     "button",
@@ -1053,13 +1053,7 @@ async function updateSettings(): Promise<HTMLElement> {
       h(
         "div",
         { class: "setting" },
-        h(
-          "div",
-          null,
-          h("div", { class: "setting-title" }, "Automatic updates"),
-          h("small", { class: "hint" }, "Checked every 5 minutes and installed silently in the background."),
-          line,
-        ),
+        h("div", null, line),
         checkBtn,
       ),
     ),
