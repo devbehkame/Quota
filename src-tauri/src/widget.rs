@@ -123,9 +123,13 @@ pub fn widget_layout(app: AppHandle, window: WebviewWindow, width: f64, height: 
         return;
     }
     let size = LogicalSize::new(width.clamp(24.0, 480.0).ceil(), height.clamp(20.0, 72.0).ceil());
-    let _ = window.set_size(size);
-    place(&app, &window);
-    if !app.state::<WidgetState>().hidden_for_fullscreen.load(Ordering::Relaxed) {
+    let physical: PhysicalSize<u32> = size.to_physical(window.scale_factor().unwrap_or(1.0));
+    // Resize and move in one step: separate calls show a frame at the old
+    // position with the new size, which looks like a flash on the taskbar.
+    let pos = target_position(&app, physical);
+    set_bounds(&window, pos, physical);
+    let hidden_for_fullscreen = app.state::<WidgetState>().hidden_for_fullscreen.load(Ordering::Relaxed);
+    if !hidden_for_fullscreen && !window.is_visible().unwrap_or(false) {
         let _ = window.show();
     }
 }
@@ -222,12 +226,38 @@ pub fn on_moved(app: &AppHandle, pos: PhysicalPosition<i32>) {
 /// Puts the widget where the user left it, or docks it beside the clock.
 fn place(app: &AppHandle, window: &WebviewWindow) {
     let size = window.outer_size().unwrap_or(PhysicalSize::new(150, 32));
+    let pos = target_position(app, size);
+    if window.outer_position().is_ok_and(|p| (p.x, p.y) == pos) {
+        return;
+    }
+    let _ = window.set_position(PhysicalPosition::new(pos.0, pos.1));
+}
+
+/// Where a widget of `size` belongs; remembered so our own moves aren't taken for drags.
+fn target_position(app: &AppHandle, size: PhysicalSize<u32>) -> (i32, i32) {
     let saved = app.state::<AppState>().config.lock().unwrap().widget_position;
     let pos = saved
         .filter(|&(x, y)| on_screen(app, x, y))
         .or_else(|| docked_position(app, size))
         .unwrap_or_else(|| fallback_position(app, size));
     *app.state::<WidgetState>().last_set.lock().unwrap() = Some(pos);
+    pos
+}
+
+#[cfg(windows)]
+fn set_bounds(window: &WebviewWindow, pos: (i32, i32), size: PhysicalSize<u32>) {
+    match win::raw(window) {
+        Some(h) => win::set_bounds(h, pos, (size.width as i32, size.height as i32)),
+        None => {
+            let _ = window.set_size(size);
+            let _ = window.set_position(PhysicalPosition::new(pos.0, pos.1));
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn set_bounds(window: &WebviewWindow, pos: (i32, i32), size: PhysicalSize<u32>) {
+    let _ = window.set_size(size);
     let _ = window.set_position(PhysicalPosition::new(pos.0, pos.1));
 }
 
@@ -417,7 +447,7 @@ mod win {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         FindWindowExW, FindWindowW, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
         SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
-        SWP_NOSIZE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
 
     use super::Rect;
@@ -549,6 +579,14 @@ mod win {
         unsafe {
             let ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
             SetWindowLongPtrW(h, GWL_EXSTYLE, ex | (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) as isize);
+        }
+    }
+
+    /// Moves and resizes in a single call, without changing focus or z-order.
+    pub fn set_bounds(h: HWND, (x, y): (i32, i32), (w, ht): (i32, i32)) {
+        // SAFETY: `h` is our own window; only its position and size change.
+        unsafe {
+            SetWindowPos(h, null_mut(), x, y, w, ht, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         }
     }
 

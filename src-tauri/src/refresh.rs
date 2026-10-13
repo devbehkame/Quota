@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use usage_core::{Snapshot, UsageError};
 
 use crate::commands::AppState;
-use crate::{secrets, tray, widget};
+use crate::{secrets, tray};
 
 const STALE_PREFIX: &str = "Showing the last values seen.";
 /// Automatic refreshes never hit a provider more often than this per account.
@@ -116,7 +116,6 @@ pub async fn refresh(app: &AppHandle, id: &str, trigger: Trigger) -> Result<Snap
         state.snapshots.lock().unwrap().insert(id.to_string(), snap.clone());
         let _ = app.emit("snapshot", &snap);
         tray::update_tooltip(app);
-        widget::notify(app);
     }
     Ok(snap)
 }

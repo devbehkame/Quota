@@ -107,10 +107,30 @@ pub fn card_layout(app: AppHandle, window: WebviewWindow, width: f64, height: f6
     }
     let _ = window.set_size(LogicalSize::new(width.clamp(200.0, 420.0).ceil(), height.clamp(60.0, 640.0).ceil()));
     let cs = app.state::<CardState>();
-    if cs.over_widget.load(Ordering::Relaxed) || cs.over_card.load(Ordering::Relaxed) {
+    let hovered = cs.over_widget.load(Ordering::Relaxed) || cs.over_card.load(Ordering::Relaxed);
+    // A refresh re-renders the card too; it must only appear if the pointer is
+    // really there (a missed "pointer left" event would otherwise pop it up on
+    // every update).
+    if hovered && pointer_over(&app) {
         position(&app, &window);
         let _ = window.show();
+    } else if !hovered {
+        let _ = window.hide();
     }
+}
+
+/// Whether the mouse pointer is over the widget or the card right now.
+fn pointer_over(app: &AppHandle) -> bool {
+    let Ok(p) = app.cursor_position() else { return true };
+    [widget::LABEL, LABEL].iter().filter_map(|l| app.get_webview_window(l)).any(|w| {
+        let visible = w.is_visible().unwrap_or(false);
+        let (Ok(pos), Ok(size)) = (w.outer_position(), w.outer_size()) else { return false };
+        visible
+            && p.x >= pos.x as f64
+            && p.y >= pos.y as f64
+            && p.x < (pos.x + size.width as i32) as f64
+            && p.y < (pos.y + size.height as i32) as f64
+    })
 }
 
 #[derive(Serialize)]

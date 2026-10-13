@@ -73,10 +73,11 @@ body {
   display: inline-flex;
   flex-direction: column;
   gap: 3px;
-  min-width: 30px;
 }
 
+/* Wide enough for "100%", so a changing value doesn't resize the window. */
 .num {
+  min-width: 4.4ch;
   font-variant-numeric: tabular-nums;
   font-size: 13.5px;
   color: var(--lvl, var(--text));
