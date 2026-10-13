@@ -63,7 +63,7 @@ Until the signing secrets exist, builds still run and produce installers, but no
 - **The interface never sees your keys.** All network calls happen in the Rust backend. The web UI only gets the usage numbers back, and it renders them as plain text (no `innerHTML`), so a provider response can't inject markup.
 - **Your Claude, Codex and GitHub sign-ins are only read.** UsageCheck never refreshes or rewrites them, so those tools keep working normally. Each is sent only to its own service (api.anthropic.com, chatgpt.com, api.github.com).
 - **Antigravity stays on your PC.** UsageCheck only talks to Antigravity's local server on `127.0.0.1`, using the per-session token Antigravity gives it on its command line. That local server uses a self-signed certificate, so certificate checks are off for that one loopback connection only. Nothing goes over the internet.
-- **Network access is locked down:** HTTPS only, no redirects followed, strict timeouts, and each key goes only to its own provider's host.
+- **Network access is locked down:** HTTPS only, no redirects followed, strict timeouts, and each key goes only to its own provider's host. Requests follow your Windows proxy setting (so a VPN or proxy app that sets it works), and certificates trusted by Windows are accepted alongside the built-in list.
 - **Least-privilege Tauri setup:** a strict Content-Security-Policy, a frozen JS prototype, and only the permissions the UI needs. Links open only for an allow-listed set of provider sites.
 - **No telemetry, no analytics, no accounts.**
 
