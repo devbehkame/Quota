@@ -33,6 +33,8 @@ pub struct WidgetState {
     /// Hidden because a full-screen app is in front.
     hidden_for_fullscreen: AtomicBool,
     keeper_running: AtomicBool,
+    /// Serialises create/destroy so rapid toggles can't create two windows.
+    sync_lock: tokio::sync::Mutex<()>,
 }
 
 fn enabled(app: &AppHandle) -> bool {
@@ -40,18 +42,27 @@ fn enabled(app: &AppHandle) -> bool {
 }
 
 /// Creates or closes the widget to match Settings, and tells it to redraw.
+///
+/// Windows are created from a background task, never inline: building a webview
+/// while the main thread is handling a command or menu click deadlocks on Windows
+/// (the whole app freezes). The lock keeps quick on/off toggles in order.
 pub fn sync(app: &AppHandle) {
-    match (enabled(app), app.get_webview_window(LABEL)) {
-        (true, None) => {
-            if let Err(e) = create(app) {
-                eprintln!("could not create the taskbar widget: {e}");
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let ws = app.state::<WidgetState>();
+        let _serial = ws.sync_lock.lock().await;
+        match (enabled(&app), app.get_webview_window(LABEL)) {
+            (true, None) => {
+                if let Err(e) = create(&app) {
+                    eprintln!("could not create the taskbar widget: {e}");
+                }
             }
+            (false, Some(w)) => {
+                let _ = w.destroy();
+            }
+            _ => notify(&app),
         }
-        (false, Some(w)) => {
-            let _ = w.destroy();
-        }
-        _ => notify(app),
-    }
+    });
 }
 
 /// Asks the widget to reload what it shows (accounts or slots changed).
@@ -78,6 +89,20 @@ fn create(app: &AppHandle) -> tauri::Result<()> {
     win::make_tool_window(&w);
     let _ = w;
     spawn_keeper(app.clone());
+
+    // The page normally shows the window once it has measured itself; if that
+    // hasn't happened after a few seconds, show it at the default size anyway.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        if let Some(w) = app.get_webview_window(LABEL) {
+            let hidden_for_fullscreen = app.state::<WidgetState>().hidden_for_fullscreen.load(Ordering::Relaxed);
+            if !w.is_visible().unwrap_or(true) && !hidden_for_fullscreen {
+                place(&app, &w);
+                let _ = w.show();
+            }
+        }
+    });
     Ok(())
 }
 

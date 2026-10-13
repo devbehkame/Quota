@@ -61,7 +61,7 @@ export const PROVIDERS: ProviderInfo[] = [
     kind: "openai_api",
     name: "OpenAI API",
     tagline: "Monthly spend · Admin key",
-    color: "#6b7cff",
+    color: "#1f2328",
     glyph: "O",
     secret: "required",
     secretLabel: "Admin API key",

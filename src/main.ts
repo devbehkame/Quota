@@ -14,7 +14,7 @@ import {
   type Snapshot,
   type WidgetSlot,
 } from "./api";
-import { h, icon } from "./dom";
+import { h, icon, logo } from "./dom";
 import { ago, headline, leftPct, level, money, pct, resetLabel, until } from "./format";
 import { PROVIDERS, provider, type ProviderInfo } from "./providers";
 
@@ -206,7 +206,7 @@ function grid(): HTMLElement {
 }
 
 function avatar(p: ProviderInfo): HTMLElement {
-  return h("div", { class: `avatar${p.glyph.length > 1 ? " two" : ""}`, style: { "--accent": p.color } }, p.glyph);
+  return h("div", { class: "avatar", style: { "--accent": p.color }, title: p.name }, logo(p.kind, 20));
 }
 
 function card(a: Account): HTMLElement {

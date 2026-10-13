@@ -127,8 +127,10 @@ fn clean(input: AccountInput) -> Result<CleanInput, String> {
     Ok(CleanInput { kind: input.kind, label, monthly_budget, data_path, secret })
 }
 
+/// Async so it runs off the main thread: detecting installed tools scans processes.
 #[tauri::command]
-pub fn get_state(state: State<'_, AppState>) -> AppView {
+pub async fn get_state(app: AppHandle) -> AppView {
+    let state = app.state::<AppState>();
     let (accounts, settings) = {
         let cfg = state.config.lock().unwrap();
         (cfg.accounts.clone(), cfg.settings.clone())
@@ -204,7 +206,7 @@ pub fn update_account(
 }
 
 #[tauri::command]
-pub fn remove_account(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+pub async fn remove_account(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
     secrets::delete(&id)?;
     let settings = {
         let mut cfg = state.config.lock().unwrap();
@@ -262,7 +264,7 @@ pub async fn test_account(
 }
 
 #[tauri::command]
-pub fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> Result<Settings, String> {
+pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> Result<Settings, String> {
     let settings = settings.sanitized();
     {
         let mut cfg = state.config.lock().unwrap();

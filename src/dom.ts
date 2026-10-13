@@ -1,3 +1,6 @@
+import type { ProviderKind } from "./api";
+import { LOGOS } from "./logos";
+
 // Tiny DOM helper. All dynamic text goes through text nodes, never innerHTML,
 // so provider responses can't inject markup.
 
@@ -38,6 +41,19 @@ function append(el: Element, children: (Child | Child[])[]) {
     if (c === null || c === undefined || c === false) continue;
     el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
+}
+
+/** A provider's logo, drawn in the current text colour. */
+export function logo(kind: ProviderKind, size: number): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("fill", "currentColor");
+  svg.setAttribute("fill-rule", "evenodd");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = LOGOS[kind]; // static, trusted markup only
+  return svg;
 }
 
 const ICONS: Record<string, string> = {

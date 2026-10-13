@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { ProviderKind, Snapshot } from "./api";
-import { h } from "./dom";
+import { h, logo } from "./dom";
 import { compact, leftPct, level, pickMeter, resetLabel, until } from "./format";
 import { provider } from "./providers";
 
@@ -50,7 +50,7 @@ function item(it: WidgetItem): HTMLElement {
   return h(
     "div",
     { class: `item ${cls}`, title: tip, "aria-label": tip },
-    h("span", { class: "icon", style: { "--accent": p.color } }, p.glyph),
+    h("span", { class: "icon", style: { "--accent": p.color } }, logo(it.kind, 13)),
     h(
       "span",
       { class: "value" },

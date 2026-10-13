@@ -84,3 +84,7 @@ Adding a provider means one file in `crates/usage-core/src/providers/`, one enum
 - **Small and fast:** the installer is a few MB and idles at a fraction of an Electron app's memory. It uses Windows' built-in WebView2.
 - **Secure by construction:** the memory-safe Rust backend holds the secrets. The sandboxed UI only gets the permissions it needs.
 - **Nice UI:** the web stack makes a polished interface easy, and it still feels native (tray, autostart, single instance).
+
+## Credits
+
+Provider logos come from [LobeHub Icons](https://github.com/lobehub/lobe-icons) (MIT). Claude, ChatGPT, OpenAI, Anthropic, GitHub Copilot, Antigravity, OpenRouter and DeepSeek are trademarks of their owners; their logos are used only to identify each service.
