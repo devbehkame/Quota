@@ -37,7 +37,7 @@ To see your plan limits:
 - **Claude:** install Claude Code and run `claude` once to sign in. If the token expires, opening Claude Code renews it.
 - **ChatGPT:** install Codex CLI and run `codex login` with your ChatGPT account. The card then updates live on every refresh. If the sign-in expires, running `codex` once renews it.
 - **Copilot in VS Code:** VS Code keeps its GitHub sign-in in its own protected storage, which UsageCheck deliberately doesn't read. In the Copilot account, click **Sign in with GitHub** once. This opens GitHub's official CLI sign-in; use the same GitHub account as VS Code. Copilot in JetBrains, Visual Studio or Vim is picked up automatically.
-- **Antigravity:** keep Antigravity open (the app, or the editor it's installed in). Its quotas update while it runs.
+- **Antigravity:** the app or editor extension is read while it's open. With the Antigravity CLI (`agy`), UsageCheck runs its own usage report (`agy -p /usage --output-format json`), at most every 5 minutes; just make sure you've signed in to `agy` once.
 
 ## Automatic updates
 

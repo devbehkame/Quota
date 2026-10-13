@@ -19,7 +19,11 @@ export function meter(m: Meter): HTMLElement {
       { class: "meter-top" },
       h("span", { class: "meter-label" }, m.label),
       m.resetsAt
-        ? h("span", { class: "meter-reset", title: `Resets ${resetLabel(m.resetsAt)}` }, `Resets ${until(m.resetsAt)}`)
+        ? h(
+            "span",
+            { class: "meter-reset", title: `Resets ${resetLabel(m.resetsAt)}`, "data-until": m.resetsAt, "data-prefix": "Resets " },
+            `Resets ${until(m.resetsAt)}`,
+          )
         : null,
     ),
     h(

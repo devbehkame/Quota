@@ -73,15 +73,35 @@ pub fn next_month_start(now: DateTime<Utc>) -> DateTime<Utc> {
 /// Runs a helper program without flashing a console window, with a short timeout.
 /// Returns stdout on success.
 pub async fn run_hidden(program: &str, args: &[&str]) -> Option<String> {
+    let out = run_capture(program, args, std::time::Duration::from_secs(8)).await?;
+    out.success.then_some(out.stdout)
+}
+
+pub struct Captured {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Like [`run_hidden`], with a custom timeout and both output streams.
+pub async fn run_capture(program: &str, args: &[&str], timeout: std::time::Duration) -> Option<Captured> {
     let mut cmd = tokio::process::Command::new(program);
-    cmd.args(args).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).kill_on_drop(true);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
     #[cfg(windows)]
     {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let out = tokio::time::timeout(std::time::Duration::from_secs(8), cmd.output()).await.ok()?.ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    let out = tokio::time::timeout(timeout, cmd.output()).await.ok()?.ok()?;
+    Some(Captured {
+        success: out.status.success(),
+        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+    })
 }
 
 pub fn fmt_money(symbol: &str, v: f64) -> String {

@@ -118,8 +118,6 @@ async function start() {
   await listen("widget-update", () => void load());
   await listen("settings-changed", () => void load());
   await load();
-  // Keep "resets in …" tooltips current.
-  window.setInterval(render, 60_000);
 }
 
 void start();

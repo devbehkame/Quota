@@ -121,7 +121,7 @@ export const PROVIDERS: ProviderInfo[] = [
     glyph: "Ag",
     secret: "none",
     help:
-      "Reads the quotas Antigravity itself shows, from Antigravity running on this PC (the app, or the editor it's installed in). Nothing is sent over the internet and no Google sign-in is touched. It updates while Antigravity is open; otherwise the last values stay on screen.",
+      "Reads the quotas Antigravity itself shows: from the Antigravity app or editor extension while it's open, or from the Antigravity CLI's own usage report (`agy`). No Google sign-in is read or sent anywhere by UsageCheck.",
     link: { text: "Get Antigravity", url: "https://antigravity.google/" },
   },
 ];

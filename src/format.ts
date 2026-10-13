@@ -97,3 +97,13 @@ export function compact(m: Meter): string {
   const sym = m.unit === "cny" ? "¥" : "$";
   return `${sym}${v >= 100 ? Math.round(v) : v.toFixed(v >= 10 ? 0 : 1)}`;
 }
+
+/** Re-computes every live time label ("Updated 2m ago", "Resets in 3h") in place. */
+export function tickTimes(root: ParentNode = document) {
+  root.querySelectorAll<HTMLElement>("[data-ago]").forEach((el) => {
+    el.textContent = `${el.dataset.prefix ?? ""}${ago(el.dataset.ago!)}`;
+  });
+  root.querySelectorAll<HTMLElement>("[data-until]").forEach((el) => {
+    el.textContent = `${el.dataset.prefix ?? ""}${until(el.dataset.until!)}`;
+  });
+}

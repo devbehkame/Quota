@@ -347,6 +347,9 @@ h1 {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.card.enter {
   animation: rise 0.25s ease-out both;
 }
 

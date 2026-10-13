@@ -15,7 +15,7 @@ import {
   type WidgetSlot,
 } from "./api";
 import { h, icon, logo } from "./dom";
-import { ago, headline } from "./format";
+import { ago, headline, tickTimes } from "./format";
 import { meter } from "./meterview";
 import { PROVIDERS, provider, type ProviderInfo } from "./providers";
 
@@ -101,10 +101,14 @@ async function removeAccount(a: Account) {
 
 // ---------------------------------------------------------------- rendering
 
+/** Cards that have already been on screen (they only slide in the first time). */
+const shown = new Set<string>();
+
 function render() {
   if (!view) return;
   closeMenu();
   root.replaceChildren(topbar(), view.accounts.length ? grid() : emptyState());
+  for (const a of view.accounts) shown.add(a.id);
 }
 
 function topbar(): HTMLElement {
@@ -112,9 +116,7 @@ function topbar(): HTMLElement {
   const times = accounts.map((a) => snaps.get(a.id)?.fetchedAt).filter((t): t is string => !!t);
   const oldest = times.sort()[0];
   const failing = accounts.filter((a) => snaps.get(a.id)?.error).length;
-  const parts: (string | HTMLElement)[] = [];
-  if (accounts.length) parts.push(`${accounts.length} account${accounts.length === 1 ? "" : "s"}`);
-  if (oldest) parts.push(`updated ${ago(oldest)}`);
+  const count = accounts.length ? `${accounts.length} account${accounts.length === 1 ? "" : "s"}` : "";
   const anyBusy = busy.size > 0;
 
   return h(
@@ -131,7 +133,10 @@ function topbar(): HTMLElement {
         h(
           "p",
           { class: "sub" },
-          parts.join(" · ") || "All your AI limits in one place",
+          count || "All your AI limits in one place",
+          oldest
+            ? h("span", { "data-ago": oldest, "data-prefix": " · updated " }, ` · updated ${ago(oldest)}`)
+            : null,
           failing ? h("span", { class: "pill danger" }, `${failing} need${failing === 1 ? "s" : ""} attention`) : null,
         ),
       ),
@@ -262,7 +267,7 @@ function card(a: Account): HTMLElement {
 
   return h(
     "article",
-    { class: `card${isBusy ? " busy" : ""}`, style: { "--accent": p.color } },
+    { class: `card${isBusy ? " busy" : ""}${shown.has(a.id) ? "" : " enter"}`, style: { "--accent": p.color } },
     h(
       "div",
       { class: "card-head" },
@@ -285,7 +290,9 @@ function card(a: Account): HTMLElement {
       "footer",
       { class: "card-foot" },
       isBusy ? h("span", { class: "spinner" }) : icon("clock", 14),
-      h("span", null, isBusy ? "Refreshing…" : snap ? `Updated ${ago(snap.fetchedAt)}` : "Waiting…"),
+      isBusy || !snap
+        ? h("span", null, isBusy ? "Refreshing…" : "Waiting…")
+        : h("span", { "data-ago": snap.fetchedAt, "data-prefix": "Updated " }, `Updated ${ago(snap.fetchedAt)}`),
       h(
         "button",
         { class: "link", onclick: () => refreshOne(a.id), disabled: isBusy },
@@ -1000,10 +1007,9 @@ async function boot() {
   for (const s of view.snapshots) mergeSnapshot(s);
   applyTheme(view.settings.theme);
   render();
-  // Keep "updated 3m ago" and reset countdowns current.
-  window.setInterval(() => {
-    if (!openMenuEl) render();
-  }, 30_000);
+  // Keep "updated 3m ago" and reset countdowns current by updating just those
+  // labels; redrawing the cards would make the page jump.
+  window.setInterval(() => tickTimes(), 30_000);
 }
 
 void boot();

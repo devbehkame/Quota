@@ -6,6 +6,10 @@
 //! the same methods on 127.0.0.1. Nothing leaves the computer, and no Google
 //! credentials are touched. When Antigravity isn't running, the app keeps
 //! showing the last values it saw.
+//!
+//! The Antigravity CLI (`agy`) keeps its local server locked with a token it
+//! doesn't share, so for it we run its own usage report instead:
+//! `agy -p /usage --output-format json`, as the signed-in user.
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -49,7 +53,9 @@ pub fn detected() -> bool {
 fn installed() -> bool {
     let local = dirs::data_local_dir().map(|d| d.join("Programs").join("Antigravity"));
     let home = dirs::home_dir().map(|d| d.join(".antigravity"));
-    [local, home].into_iter().flatten().any(|p| p.is_dir()) || super::editor_extension_installed("antigravity")
+    [local, home].into_iter().flatten().any(|p| p.is_dir())
+        || super::editor_extension_installed("antigravity")
+        || agy_on_path().is_some()
 }
 
 pub async fn fetch() -> Result<Usage, UsageError> {
@@ -62,8 +68,12 @@ pub async fn fetch() -> Result<Usage, UsageError> {
         *LAST.lock().unwrap() = None;
     }
 
-    let (candidates, related) = scan();
+    let (candidates, related, running_agy) = scan_all();
+    let agy = running_agy.into_iter().next().or_else(agy_on_path);
     if candidates.is_empty() {
+        if let Some(agy) = &agy {
+            return from_cli(agy).await;
+        }
         let msg = if related.is_empty() {
             "Antigravity isn't running. Open Antigravity (or the editor it's installed in) to update these numbers."
                 .to_string()
@@ -104,6 +114,9 @@ pub async fn fetch() -> Result<Usage, UsageError> {
         }
     }
 
+    if let Some(agy) = &agy {
+        return from_cli(agy).await;
+    }
     Err(UsageError::Offline(if answered {
         "Connected to Antigravity, but it didn't report any quotas. Sign in inside Antigravity and send one message, then refresh."
             .into()
@@ -166,6 +179,12 @@ fn parse_any(v: &Value) -> Option<Usage> {
 /// Finds Antigravity language servers, plus the names of other Antigravity
 /// processes (for a helpful message when the server itself isn't up).
 fn scan() -> (Vec<Candidate>, Vec<String>) {
+    let (c, r, _) = scan_all();
+    (c, r)
+}
+
+/// Also returns the paths of running `agy` (Antigravity CLI) executables.
+fn scan_all() -> (Vec<Candidate>, Vec<String>, Vec<std::path::PathBuf>) {
     let mut sys = System::new();
     sys.refresh_processes_specifics(
         ProcessesToUpdate::All,
@@ -174,8 +193,16 @@ fn scan() -> (Vec<Candidate>, Vec<String>) {
     );
     let mut candidates = Vec::new();
     let mut related = Vec::new();
+    let mut agy = Vec::new();
     for (pid, p) in sys.processes() {
         let name = p.name().to_string_lossy().to_string();
+        if is_agy(&name) {
+            if let Some(exe) = p.exe().filter(|e| e.is_file()) {
+                if !agy.iter().any(|a: &std::path::PathBuf| a == exe) {
+                    agy.push(exe.to_path_buf());
+                }
+            }
+        }
         let mut args: Vec<String> = p.cmd().iter().map(|a| a.to_string_lossy().into_owned()).collect();
         // Inside another editor, the install path still names Antigravity.
         if let Some(exe) = p.exe() {
@@ -191,7 +218,22 @@ fn scan() -> (Vec<Candidate>, Vec<String>) {
             related.push(name);
         }
     }
-    (candidates, related)
+    (candidates, related, agy)
+}
+
+fn is_agy(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n == "agy" || n == "agy.exe"
+}
+
+/// `agy` on PATH, if the CLI is installed but not running.
+fn agy_on_path() -> Option<std::path::PathBuf> {
+    let exe = if cfg!(windows) { "agy.exe" } else { "agy" };
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).map(|d| d.join(exe)).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .find(|p| p.is_file())
 }
 
 fn candidate(pid: u32, args: &[String]) -> Candidate {
@@ -307,6 +349,83 @@ mod win_ports {
         }
         ports
     }
+}
+
+/// Runs the CLI's own usage report. It takes a few seconds (agy starts its
+/// backend), so it is only used when no editor server can answer.
+async fn from_cli(agy: &std::path::Path) -> Result<Usage, UsageError> {
+    if let Some((at, usage)) = LAST_CLI.lock().unwrap().clone() {
+        if at.elapsed() < CLI_REUSE {
+            return Ok(usage);
+        }
+    }
+    let usage = run_cli(agy).await?;
+    *LAST_CLI.lock().unwrap() = Some((std::time::Instant::now(), usage.clone()));
+    Ok(usage)
+}
+
+/// Each CLI report starts agy's backend, so a fresh one is fetched at most this often.
+const CLI_REUSE: Duration = Duration::from_secs(5 * 60);
+static LAST_CLI: Mutex<Option<(std::time::Instant, Usage)>> = Mutex::new(None);
+
+async fn run_cli(agy: &std::path::Path) -> Result<Usage, UsageError> {
+    let program = agy.to_string_lossy().into_owned();
+    let mut args = vec!["-p", "/usage", "--output-format", "json", "--print-timeout", "90s"];
+    let mut out = crate::util::run_capture(&program, &args, Duration::from_secs(100)).await;
+    // Older versions don't know --print-timeout.
+    if out.as_ref().is_some_and(|o| !o.success && o.stderr.contains("print-timeout")) {
+        args.truncate(4);
+        out = crate::util::run_capture(&program, &args, Duration::from_secs(100)).await;
+    }
+    let Some(out) = out else {
+        return Err(UsageError::Offline("The Antigravity CLI (agy) didn't answer in time. Try again later.".into()));
+    };
+    let combined = format!("{}\n{}", out.stdout, out.stderr).to_ascii_lowercase();
+    if !out.success && (combined.contains("authentication required") || combined.contains("please log in")) {
+        return Err(UsageError::Setup(
+            "The Antigravity CLI isn't signed in. Run `agy` in a terminal and sign in, then refresh.".into(),
+        ));
+    }
+    // The JSON report may be preceded by log lines.
+    let json_start = out.stdout.find('{');
+    let report = json_start.and_then(|i| serde_json::from_str::<Value>(&out.stdout[i..]).ok());
+    match report.as_ref().and_then(parse_cli_report) {
+        Some(u) => Ok(u),
+        None => Err(UsageError::Offline(
+            "The Antigravity CLI (agy) didn't return a usage report. Update agy to the latest version, then refresh."
+                .into(),
+        )),
+    }
+}
+
+/// `agy -p /usage --output-format json`:
+/// `{ status: "SUCCESS", command: { name: "usage", data: { groups: [{ name,
+/// buckets: [{ name, window, remaining_fraction, reset_time, disabled }] }] } } }`.
+pub(crate) fn parse_cli_report(v: &Value) -> Option<Usage> {
+    if v["status"].as_str() != Some("SUCCESS") || v["command"]["name"].as_str() != Some("usage") {
+        return None;
+    }
+    let mut meters = Vec::new();
+    for g in v["command"]["data"]["groups"].as_array().into_iter().flatten() {
+        let group = g["name"].as_str().unwrap_or_default().trim();
+        for b in g["buckets"].as_array().into_iter().flatten() {
+            if b["disabled"].as_bool() == Some(true) {
+                continue;
+            }
+            let Some(fraction) = num(&b["remaining_fraction"]) else { continue };
+            let window = match b["window"].as_str().unwrap_or_default() {
+                "5h" => "5-hour".to_owned(),
+                "weekly" => "Weekly".to_owned(),
+                "daily" => "Daily".to_owned(),
+                other if !other.is_empty() => other.to_owned(),
+                _ => b["name"].as_str().unwrap_or("Limit").to_owned(),
+            };
+            let label = if group.is_empty() { window } else { format!("{group} · {window}") };
+            let used = (1.0 - fraction.clamp(0.0, 1.0)) * 100.0;
+            meters.push(Meter::percent(label, used, timestamp(&b["reset_time"])));
+        }
+    }
+    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec!["From the Antigravity CLI (agy).".into()] })
 }
 
 /// Newer builds: `{ response: { groups: [{ displayName, buckets: [{ displayName,
@@ -461,6 +580,32 @@ mod tests {
         assert_eq!(u.meters[0].detail.as_deref(), Some("Resets in 2h"));
         assert_eq!(u.meters[1].remaining, Some(0.0));
         assert!(parse_summary(&json!({"userStatus": {}})).is_none());
+    }
+
+    #[test]
+    fn parses_cli_report() {
+        let v = json!({
+            "status": "SUCCESS",
+            "command": {"name": "usage", "data": {"groups": [
+                {"name": "Gemini Models", "buckets": [
+                    {"id": "gemini-weekly", "window": "weekly", "remaining_fraction": 0.86, "reset_time": "2026-09-17T18:40:27Z"},
+                    {"id": "gemini-5h", "window": "5h", "remaining_fraction": 0.95, "reset_time": "2026-09-13T03:48:04Z"},
+                    {"id": "off", "window": "5h", "remaining_fraction": 0.1, "disabled": true}
+                ]},
+                {"name": "Claude and GPT models", "buckets": [
+                    {"id": "3p-5h", "window": "5h", "remaining_fraction": 1.0, "reset_time": "2026-09-13T05:29:19Z"},
+                    {"id": "unknown", "window": "weekly"}
+                ]}
+            ]}}
+        });
+        let u = parse_cli_report(&v).unwrap();
+        let labels: Vec<_> = u.meters.iter().map(|m| m.label.as_str()).collect();
+        assert_eq!(labels, ["Gemini Models · Weekly", "Gemini Models · 5-hour", "Claude and GPT models · 5-hour"]);
+        assert!((u.meters[0].remaining.unwrap() - 86.0).abs() < 1e-9);
+        assert!(u.meters[0].resets_at.is_some());
+        let mut bad = v.clone();
+        bad["status"] = json!("ERROR");
+        assert!(parse_cli_report(&bad).is_none());
     }
 
     #[test]

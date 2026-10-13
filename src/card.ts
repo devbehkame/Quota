@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { ProviderKind, Settings, Snapshot } from "./api";
 import { h, icon, logo } from "./dom";
-import { ago } from "./format";
+import { ago, tickTimes } from "./format";
 import { meter } from "./meterview";
 import { provider } from "./providers";
 
@@ -62,7 +62,9 @@ function render() {
       "footer",
       { class: "card-foot" },
       icon("clock", 14),
-      h("span", null, snap ? `Updated ${ago(snap.fetchedAt)}` : "Waiting…"),
+      snap
+        ? h("span", { "data-ago": snap.fetchedAt, "data-prefix": "Updated " }, `Updated ${ago(snap.fetchedAt)}`)
+        : h("span", null, "Waiting…"),
       h("span", { class: "muted" }, "Click to open"),
     ),
   );
@@ -102,5 +104,7 @@ async function start() {
     }
   });
 }
+
+window.setInterval(() => tickTimes(root), 30_000);
 
 void start();
