@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -7,5 +8,8 @@ export default defineConfig({
     target: "chrome110",
     minify: "esbuild",
     sourcemap: false,
+    rollupOptions: {
+      input: { main: resolve(__dirname, "index.html"), widget: resolve(__dirname, "widget.html") },
+    },
   },
 });

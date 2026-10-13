@@ -1,0 +1,125 @@
+/* The taskbar widget: transparent window, compact pills of "icon + percentage". */
+
+:root {
+  --text: #f3f4f8;
+  --muted: rgba(243, 244, 248, 0.6);
+  --pill: rgba(255, 255, 255, 0.08);
+  --pill-hover: rgba(255, 255, 255, 0.16);
+  --track: rgba(255, 255, 255, 0.16);
+  --good: #4ade80;
+  --warn: #fbbf24;
+  --danger: #f87171;
+}
+
+:root.light {
+  --text: #14161f;
+  --muted: rgba(20, 22, 31, 0.6);
+  --pill: rgba(0, 0, 0, 0.06);
+  --pill-hover: rgba(0, 0, 0, 0.12);
+  --track: rgba(0, 0, 0, 0.14);
+  --good: #15803d;
+  --warn: #b45309;
+  --danger: #dc2626;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  font: 600 13px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  user-select: none;
+  cursor: default;
+  -webkit-font-smoothing: antialiased;
+}
+
+.widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  border-radius: 7px;
+  background: var(--pill);
+  transition: background 0.12s;
+}
+
+.item:hover {
+  background: var(--pill-hover);
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  flex: none;
+}
+
+.value {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 30px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-size: 13.5px;
+  color: var(--lvl, var(--text));
+}
+
+.mini {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.mini > span {
+  display: block;
+  height: 100%;
+  background: var(--lvl, var(--text));
+}
+
+.lvl-good {
+  --lvl: var(--good);
+}
+
+.lvl-warn {
+  --lvl: var(--warn);
+}
+
+.lvl-danger {
+  --lvl: var(--danger);
+}
+
+.lvl-muted .num {
+  color: var(--muted);
+}
+
+.empty {
+  padding: 0 8px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 7px;
+  background: var(--pill);
+  color: var(--muted);
+  font-weight: 500;
+}

@@ -1,4 +1,4 @@
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
 use usage_core::Unit;
@@ -10,9 +10,11 @@ const TRAY_ID: &str = "main";
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Open UsageCheck", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "Refresh all", true, None::<&str>)?;
+    let widget_on = app.state::<AppState>().config.lock().unwrap().settings.widget.enabled;
+    let widget = CheckMenuItem::with_id(app, "widget", "Taskbar widget", true, widget_on, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show, &refresh, &sep, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &refresh, &widget, &sep, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("UsageCheck")
@@ -21,9 +23,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
             "refresh" => {
-                show_main(app);
-                let _ = app.emit("refresh-all", ());
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move { crate::refresh::refresh_all(&app).await });
             }
+            "widget" => toggle_widget(app),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -37,6 +40,18 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     }
     builder.build(app)?;
     Ok(())
+}
+
+fn toggle_widget(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let settings = {
+        let mut cfg = state.config.lock().unwrap();
+        cfg.settings.widget.enabled = !cfg.settings.widget.enabled;
+        let _ = state.persist(&cfg);
+        cfg.settings.clone()
+    };
+    let _ = app.emit("settings-changed", &settings);
+    crate::widget::sync(app);
 }
 
 pub fn show_main(app: &AppHandle) {

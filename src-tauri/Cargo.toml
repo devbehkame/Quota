@@ -23,10 +23,18 @@ serde_json = "1"
 futures = "0.3"
 uuid = { version = "1", features = ["v4"] }
 zeroize = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tokio = { version = "1", features = ["sync", "time"] }
 
 # Windows Credential Manager on Windows; other targets only build for development.
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3.6", features = ["windows-native"] }
+windows-sys = { version = "0.60", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Registry",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [target.'cfg(not(windows))'.dependencies]
 keyring = { version = "3.6" }

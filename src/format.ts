@@ -71,3 +71,29 @@ export function headline(m: Meter): { value: string; caption: string } {
   }
   return { value: money(m.unit, m.used ?? 0), caption: m.unit === "count" ? "used" : "spent" };
 }
+
+/** The meter to show for a widget slot: the named one, or the one with least left. */
+export function pickMeter(meters: Meter[], wanted: string | null): Meter | null {
+  if (wanted) {
+    const m = meters.find((x) => x.label === wanted);
+    if (m) return m;
+  }
+  let best: Meter | null = null;
+  for (const m of meters) {
+    const left = leftPct(m);
+    if (left === null) continue;
+    if (!best || left < (leftPct(best) ?? 101)) best = m;
+  }
+  return best ?? meters[0] ?? null;
+}
+
+/** A very short value for tight spaces: "65%", "$74", "71". */
+export function compact(m: Meter): string {
+  if (m.unit === "percent") return pct(leftPct(m) ?? 0);
+  const left = leftPct(m);
+  if (left !== null && m.unit !== "count") return pct(left);
+  const v = m.remaining ?? m.used ?? 0;
+  if (m.unit === "count") return Math.round(v).toLocaleString();
+  const sym = m.unit === "cny" ? "¥" : "$";
+  return `${sym}${v >= 100 ? Math.round(v) : v.toFixed(v >= 10 ? 0 : 1)}`;
+}

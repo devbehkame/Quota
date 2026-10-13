@@ -5,24 +5,23 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
-use usage_core::{Account, LocalDetection, ProviderKind, Snapshot, UsageError};
+use tauri::{AppHandle, Emitter, Manager, State};
+use usage_core::{Account, LocalDetection, ProviderKind, Snapshot};
 use zeroize::Zeroizing;
 
 use crate::config::{self, Config, Settings};
-use crate::{secrets, tray};
-
-const STALE_PREFIX: &str = "Showing the last values seen.";
+use crate::{refresh, secrets, tray, widget};
 
 pub struct AppState {
     pub client: usage_core::HttpClient,
     pub config_path: std::path::PathBuf,
     pub config: Mutex<Config>,
     pub snapshots: Mutex<HashMap<String, Snapshot>>,
+    pub locks: refresh::AccountLocks,
 }
 
 impl AppState {
-    fn account(&self, id: &str) -> Result<Account, String> {
+    pub fn account(&self, id: &str) -> Result<Account, String> {
         self.config
             .lock()
             .unwrap()
@@ -33,7 +32,7 @@ impl AppState {
             .ok_or_else(|| "That account no longer exists.".to_string())
     }
 
-    fn persist(&self, cfg: &Config) -> Result<(), String> {
+    pub fn persist(&self, cfg: &Config) -> Result<(), String> {
         config::save(&self.config_path, cfg)
     }
 }
@@ -172,7 +171,12 @@ pub fn add_account(state: State<'_, AppState>, input: AccountInput) -> Result<Ac
 }
 
 #[tauri::command]
-pub fn update_account(state: State<'_, AppState>, id: String, input: AccountInput) -> Result<AccountView, String> {
+pub fn update_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    input: AccountInput,
+) -> Result<AccountView, String> {
     let input = clean(input)?;
     let mut cfg = state.config.lock().unwrap();
     let idx = cfg.accounts.iter().position(|a| a.id == id).ok_or("That account no longer exists.")?;
@@ -195,19 +199,24 @@ pub fn update_account(state: State<'_, AppState>, id: String, input: AccountInpu
     if let Some(s) = &input.secret {
         secrets::set(&account.id, s)?;
     }
+    widget::notify(&app);
     Ok(view(account))
 }
 
 #[tauri::command]
 pub fn remove_account(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
     secrets::delete(&id)?;
-    {
+    let settings = {
         let mut cfg = state.config.lock().unwrap();
         cfg.accounts.retain(|a| a.id != id);
+        cfg.settings.widget.slots.retain(|s| s.account_id != id);
         state.persist(&cfg)?;
-    }
+        cfg.settings.clone()
+    };
     state.snapshots.lock().unwrap().remove(&id);
     tray::update_tooltip(&app);
+    let _ = app.emit("settings-changed", &settings);
+    widget::sync(&app);
     Ok(())
 }
 
@@ -220,33 +229,8 @@ pub fn reorder_accounts(state: State<'_, AppState>, ids: Vec<String>) -> Result<
 }
 
 #[tauri::command]
-pub async fn refresh_account(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Snapshot, String> {
-    let account = state.account(&id)?;
-    let secret = secrets::get(&id)?;
-    let result = usage_core::fetch(&state.client, &account, secret.as_deref().map(|s| s.as_str())).await;
-    let snap = match result {
-        // The local app (e.g. Antigravity) is closed: keep the last numbers we saw.
-        Err(UsageError::Offline(msg)) => {
-            let previous = state.snapshots.lock().unwrap().get(&id).cloned();
-            match previous {
-                Some(mut prev) if prev.usage.is_some() => {
-                    if let Some(u) = prev.usage.as_mut() {
-                        u.notes.retain(|n| !n.starts_with(STALE_PREFIX));
-                        u.notes.insert(0, format!("{STALE_PREFIX} {msg}"));
-                    }
-                    prev
-                }
-                _ => Snapshot::from_result(&id, Err(UsageError::Offline(msg))),
-            }
-        }
-        other => Snapshot::from_result(&id, other),
-    };
-    // Ignore results for accounts deleted while the request was in flight.
-    if state.account(&id).is_ok() {
-        state.snapshots.lock().unwrap().insert(id, snap.clone());
-        tray::update_tooltip(&app);
-    }
-    Ok(snap)
+pub async fn refresh_account(app: AppHandle, id: String) -> Result<Snapshot, String> {
+    refresh::refresh(&app, &id).await
 }
 
 /// Checks a form before saving. For an existing account, an empty key field means
@@ -278,15 +262,29 @@ pub async fn test_account(
 }
 
 #[tauri::command]
-pub fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<Settings, String> {
+pub fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> Result<Settings, String> {
     let settings = settings.sanitized();
-    let mut cfg = state.config.lock().unwrap();
-    let before = std::mem::replace(&mut cfg.settings, settings.clone());
-    if let Err(e) = state.persist(&cfg) {
-        cfg.settings = before;
-        return Err(e);
+    {
+        let mut cfg = state.config.lock().unwrap();
+        let known: Vec<String> = cfg.accounts.iter().map(|a| a.id.clone()).collect();
+        let mut settings = settings.clone();
+        settings.widget.slots.retain(|s| known.contains(&s.account_id));
+        let before = std::mem::replace(&mut cfg.settings, settings);
+        if let Err(e) = state.persist(&cfg) {
+            cfg.settings = before;
+            return Err(e);
+        }
     }
-    Ok(settings)
+    let saved = state.config.lock().unwrap().settings.clone();
+    let _ = app.emit("settings-changed", &saved);
+    widget::sync(&app);
+    Ok(saved)
+}
+
+/// Re-checks all accounts now (toolbar button, tray menu, Ctrl+R).
+#[tauri::command]
+pub async fn refresh_all(app: AppHandle) {
+    refresh::refresh_all(&app).await;
 }
 
 #[tauri::command]

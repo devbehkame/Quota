@@ -4613,6 +4613,7 @@ dependencies = [
 name = "usagecheck"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures",
  "keyring",
  "serde",
@@ -4622,8 +4623,10 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
+ "tokio",
  "usage-core",
  "uuid",
+ "windows-sys 0.60.2",
  "zeroize",
 ]
 

@@ -13,13 +13,34 @@ pub struct Settings {
     pub close_to_tray: bool,
     /// "system", "light" or "dark".
     pub theme: String,
+    pub widget: WidgetSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { refresh_minutes: 5, close_to_tray: true, theme: "system".into() }
+        Settings { refresh_minutes: 5, close_to_tray: true, theme: "system".into(), widget: WidgetSettings::default() }
     }
 }
+
+/// The small always-on-top strip that sits on the taskbar.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WidgetSettings {
+    pub enabled: bool,
+    /// Up to two accounts to show, in order.
+    pub slots: Vec<WidgetSlot>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetSlot {
+    pub account_id: String,
+    /// Which gauge to show; `None` means the tightest one.
+    #[serde(default)]
+    pub meter: Option<String>,
+}
+
+pub const MAX_WIDGET_SLOTS: usize = 2;
 
 impl Settings {
     pub fn sanitized(mut self) -> Self {
@@ -28,6 +49,11 @@ impl Settings {
         }
         if !["system", "light", "dark"].contains(&self.theme.as_str()) {
             self.theme = "system".into();
+        }
+        self.widget.slots.retain(|s| !s.account_id.is_empty() && s.account_id.len() <= 64);
+        self.widget.slots.truncate(MAX_WIDGET_SLOTS);
+        for s in &mut self.widget.slots {
+            s.meter = s.meter.take().filter(|m| !m.is_empty() && m.len() <= 120);
         }
         self
     }
@@ -38,6 +64,8 @@ impl Settings {
 pub struct Config {
     pub accounts: Vec<Account>,
     pub settings: Settings,
+    /// Where the user dragged the widget (physical pixels). `None` docks it next to the clock.
+    pub widget_position: Option<(i32, i32)>,
 }
 
 pub fn load(path: &Path) -> Config {

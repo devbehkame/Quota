@@ -1084,6 +1084,44 @@ select.input {
   font-weight: 600;
 }
 
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-left: 2px;
+}
+
+.slot-rows {
+  border-top: 1px solid var(--border);
+}
+
+.slot-rows[hidden] {
+  display: none;
+}
+
+.slot-rows + .setting {
+  border-top: 1px solid var(--border);
+}
+
+.slot-pickers {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.slot-pickers select.input {
+  min-width: 0;
+  width: 150px;
+}
+
 .segmented {
   display: flex;
   padding: 3px;

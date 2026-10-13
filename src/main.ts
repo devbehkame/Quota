@@ -2,7 +2,18 @@ import { listen } from "@tauri-apps/api/event";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-import { api, errorText, type Account, type AccountInput, type AppView, type Meter, type ProviderKind, type Settings, type Snapshot } from "./api";
+import {
+  api,
+  errorText,
+  type Account,
+  type AccountInput,
+  type AppView,
+  type Meter,
+  type ProviderKind,
+  type Settings,
+  type Snapshot,
+  type WidgetSlot,
+} from "./api";
 import { h, icon } from "./dom";
 import { ago, headline, leftPct, level, money, pct, resetLabel, until } from "./format";
 import { PROVIDERS, provider, type ProviderInfo } from "./providers";
@@ -12,7 +23,6 @@ import { PROVIDERS, provider, type ProviderInfo } from "./providers";
 let view: AppView | null = null;
 const snaps = new Map<string, Snapshot>();
 const busy = new Set<string>();
-let refreshTimer: number | undefined;
 let openMenuEl: HTMLElement | null = null;
 
 const root = document.getElementById("app")!;
@@ -34,14 +44,11 @@ async function refreshOne(id: string) {
 }
 
 async function refreshAll() {
-  if (!view) return;
-  await Promise.allSettled(view.accounts.map((a) => refreshOne(a.id)));
-}
-
-function scheduleAutoRefresh() {
-  window.clearInterval(refreshTimer);
-  const mins = view?.settings.refreshMinutes ?? 0;
-  if (mins > 0) refreshTimer = window.setInterval(refreshAll, mins * 60_000);
+  try {
+    await api.refreshAll();
+  } catch (e) {
+    toast(errorText(e), "error");
+  }
 }
 
 function applyTheme(theme: Settings["theme"]) {
@@ -658,7 +665,6 @@ async function openSettings() {
     try {
       view!.settings = await api.saveSettings(s);
       applyTheme(view!.settings.theme);
-      scheduleAutoRefresh();
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -730,6 +736,7 @@ async function openSettings() {
         settingRow("Keep running in the tray", "Closing the window hides it to the system tray.", trayToggle),
         settingRow("Start with Windows", "Launch minimized to the tray when you sign in.", autostartToggle),
       ),
+      widgetSettings(s, save),
       h(
         "div",
         { class: "callout info" },
@@ -752,6 +759,96 @@ async function openSettings() {
       ),
     ),
   ]);
+}
+
+/** "Taskbar widget": on/off, and which two accounts (and gauges) it shows. */
+function widgetSettings(s: Settings, save: () => Promise<void>): HTMLElement {
+  const accounts = view!.accounts;
+  const slotRows = h("div", { class: "slot-rows" });
+
+  const setSlots = (slots: (WidgetSlot | null)[]) => {
+    s.widget = { ...s.widget, slots: slots.filter((x): x is WidgetSlot => !!x && !!x.accountId) };
+    void save();
+  };
+
+  const drawSlots = () => {
+    const current: (WidgetSlot | null)[] = [s.widget.slots[0] ?? null, s.widget.slots[1] ?? null];
+    slotRows.replaceChildren(
+      ...current.map((slot, i) => {
+        const acc = h(
+          "select",
+          { class: "input", "aria-label": `Slot ${i + 1} account` },
+          h("option", { value: "", selected: !slot }, "Nothing"),
+          ...accounts.map((a) => h("option", { value: a.id, selected: slot?.accountId === a.id }, a.label)),
+        );
+        const labels = slot ? (snaps.get(slot.accountId)?.usage?.meters ?? []).map((m) => m.label) : [];
+        if (slot?.meter && !labels.includes(slot.meter)) labels.push(slot.meter);
+        const meter = h(
+          "select",
+          { class: "input", "aria-label": `Slot ${i + 1} gauge`, disabled: !slot },
+          h("option", { value: "", selected: !slot?.meter }, "Tightest limit"),
+          ...labels.map((l) => h("option", { value: l, selected: slot?.meter === l }, l)),
+        );
+        acc.addEventListener("change", () => {
+          current[i] = acc.value ? { accountId: acc.value, meter: null } : null;
+          setSlots(current);
+          drawSlots();
+        });
+        meter.addEventListener("change", () => {
+          if (!current[i]) return;
+          current[i] = { ...current[i]!, meter: meter.value || null };
+          setSlots(current);
+        });
+        return h(
+          "div",
+          { class: "setting" },
+          h("div", null, h("div", { class: "setting-title" }, `Slot ${i + 1}`)),
+          h("div", { class: "slot-pickers" }, acc, meter),
+        );
+      }),
+    );
+  };
+
+  const enabled = toggle(s.widget.enabled, (v) => {
+    s.widget = { ...s.widget, enabled: v };
+    if (v && s.widget.slots.length === 0) {
+      s.widget.slots = accounts.slice(0, 2).map((a) => ({ accountId: a.id, meter: null }));
+    }
+    slotRows.hidden = !v;
+    drawSlots();
+    void save();
+  });
+  slotRows.hidden = !s.widget.enabled;
+  drawSlots();
+
+  return h(
+    "div",
+    { class: "settings-group" },
+    h("div", { class: "group-title" }, "Taskbar widget"),
+    h(
+      "div",
+      { class: "settings" },
+      settingRow(
+        "Show on the taskbar",
+        "Up to two accounts next to the clock: icon and how much is left. Drag it to move it; click it to open UsageCheck.",
+        enabled,
+      ),
+      slotRows,
+      settingRow(
+        "Position",
+        "Put the widget back next to the clock after moving it.",
+        h(
+          "button",
+          {
+            class: "btn small",
+            type: "button",
+            onclick: () => api.widgetResetPosition().catch((e) => toast(errorText(e), "error")),
+          },
+          "Dock to clock",
+        ),
+      ),
+    ),
+  );
 }
 
 function settingRow(title: string, hint: string | null, control: HTMLElement): HTMLElement {
@@ -803,23 +900,44 @@ function refreshStale() {
 window.addEventListener("focus", refreshStale);
 document.addEventListener("visibilitychange", refreshStale);
 
+/** Keeps whichever snapshot is newer (events can race the initial state load). */
+function mergeSnapshot(s: Snapshot) {
+  const cur = snaps.get(s.accountId);
+  if (!cur || Date.parse(s.fetchedAt) >= Date.parse(cur.fetchedAt)) snaps.set(s.accountId, s);
+}
+
 async function boot() {
+  // The backend refreshes on its own schedule (so the tray and taskbar widget stay
+  // current while this window is hidden) and tells us about every result. Listen
+  // before loading state so nothing that finishes in between is missed.
+  await listen<Snapshot>("snapshot", (e) => {
+    mergeSnapshot(e.payload);
+    render();
+  });
+  await listen<{ accountId: string; busy: boolean }>("refresh-state", (e) => {
+    if (e.payload.busy) busy.add(e.payload.accountId);
+    else busy.delete(e.payload.accountId);
+    render();
+  });
+  await listen<Settings>("settings-changed", (e) => {
+    if (!view) return;
+    view.settings = e.payload;
+    applyTheme(view.settings.theme);
+  });
+
   try {
     view = await api.getState();
   } catch (e) {
     root.replaceChildren(h("main", { class: "empty" }, h("h2", null, "UsageCheck could not start"), h("p", null, errorText(e))));
     return;
   }
-  for (const s of view.snapshots) snaps.set(s.accountId, s);
+  for (const s of view.snapshots) mergeSnapshot(s);
   applyTheme(view.settings.theme);
   render();
-  scheduleAutoRefresh();
   // Keep "updated 3m ago" and reset countdowns current.
   window.setInterval(() => {
     if (!openMenuEl) render();
   }, 30_000);
-  await listen("refresh-all", () => void refreshAll());
-  void refreshAll();
 }
 
 void boot();

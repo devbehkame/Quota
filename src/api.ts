@@ -49,6 +49,18 @@ export interface Settings {
   refreshMinutes: number;
   closeToTray: boolean;
   theme: "system" | "light" | "dark";
+  widget: WidgetSettings;
+}
+
+export interface WidgetSlot {
+  accountId: string;
+  /** Meter label to show; null = the tightest one. */
+  meter: string | null;
+}
+
+export interface WidgetSettings {
+  enabled: boolean;
+  slots: WidgetSlot[];
 }
 
 export interface AppView {
@@ -75,6 +87,8 @@ export const api = {
   removeAccount: (id: string) => invoke<void>("remove_account", { id }),
   reorderAccounts: (ids: string[]) => invoke<void>("reorder_accounts", { ids }),
   refreshAccount: (id: string) => invoke<Snapshot>("refresh_account", { id }),
+  refreshAll: () => invoke<void>("refresh_all"),
+  widgetResetPosition: () => invoke<void>("widget_reset_position"),
   testAccount: (input: AccountInput, existingId: string | null) =>
     invoke<Snapshot>("test_account", { input, existingId }),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),

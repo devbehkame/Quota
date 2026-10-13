@@ -4,6 +4,10 @@ A small, fast Windows app that shows how much usage is left on your AI accounts,
 
 ![UsageCheck](docs/screenshot.png)
 
+The taskbar widget, next to the clock:
+
+![Taskbar widget](docs/widget.png)
+
 | Account | What you see | How it connects |
 | --- | --- | --- |
 | **Claude plan** (Pro / Max) | 5-hour session and weekly limits, with reset times | Reads the sign-in from [Claude Code](https://claude.com/product/claude-code) on your PC. Nothing to paste. |
@@ -47,8 +51,9 @@ To see your plan limits:
 
 - Every account on one dashboard, coloured green, amber or red by how much is left.
 - Reset countdowns ("Resets in 2h 18m"). Hover one for the exact time.
-- Auto-refresh (off, or every 1–60 min), plus a refresh of anything older than a minute when you bring the window back. Ctrl+R / F5 refreshes now.
-- Tray icon: hover it to see each account's tightest limit; right-click it to refresh or quit.
+- Auto-refresh (off, or every 1–60 min) runs in the background, so the tray and taskbar widget stay current even when the window is closed to the tray. There's also a refresh of anything older than a minute when you bring the window back. Ctrl+R / F5 refreshes now.
+- **Taskbar widget:** two accounts sit on the taskbar next to the clock, each as its icon plus how much is left (e.g. `C 65%  G 88%`), coloured green, amber or red. In Settings → Taskbar widget, pick which two accounts to show, and for each one either its tightest limit or a specific gauge (e.g. Claude's weekly limit). Click it to open UsageCheck, or drag it anywhere; "Dock to clock" puts it back. It hides while a full-screen app or game is in front, follows the taskbar's light or dark colour, and can also be toggled from the tray menu.
+- Tray icon: hover it to see each account's tightest limit; right-click it to refresh, toggle the taskbar widget, or quit.
 - Optional start with Windows (launches minimized to the tray).
 - Light, dark or system theme.
 - A **Test connection** button before you save a key.

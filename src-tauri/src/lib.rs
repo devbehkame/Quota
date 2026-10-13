@@ -1,7 +1,9 @@
 mod commands;
 mod config;
+mod refresh;
 mod secrets;
 mod tray;
+mod widget;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -30,8 +32,12 @@ pub fn run() {
                 config_path,
                 config: Mutex::new(cfg),
                 snapshots: Mutex::new(HashMap::new()),
+                locks: Default::default(),
             });
+            app.manage(widget::WidgetState::default());
             tray::create(app.handle())?;
+            refresh::spawn_scheduler(app.handle().clone());
+            widget::sync(app.handle());
 
             // The window starts hidden to avoid a white flash; show it unless we were
             // launched at login with --minimized.
@@ -40,14 +46,18 @@ pub fn run() {
             }
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 let to_tray = window.state::<AppState>().config.lock().unwrap().settings.close_to_tray;
                 if to_tray {
                     api.prevent_close();
                     let _ = window.hide();
                 }
             }
+            WindowEvent::Moved(pos) if window.label() == widget::LABEL => {
+                widget::on_moved(window.app_handle(), *pos);
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
@@ -56,10 +66,15 @@ pub fn run() {
             commands::remove_account,
             commands::reorder_accounts,
             commands::refresh_account,
+            commands::refresh_all,
             commands::test_account,
             commands::save_settings,
             commands::hide_window,
             commands::quit_app,
+            widget::widget_state,
+            widget::widget_layout,
+            widget::widget_open_main,
+            widget::widget_reset_position,
         ])
         .run(tauri::generate_context!())
         .expect("error while running UsageCheck");
