@@ -14,7 +14,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
-use crate::commands::AppState;
 
 const EVERY: Duration = Duration::from_secs(5 * 60);
 const FIRST_CHECK_AFTER: Duration = Duration::from_secs(20);
@@ -50,9 +49,6 @@ fn set(app: &AppHandle, f: impl FnOnce(&mut UpdateStatus)) {
     let _ = app.emit("update-status", &status);
 }
 
-fn auto_update_on(app: &AppHandle) -> bool {
-    app.state::<AppState>().config.lock().unwrap().settings.auto_update
-}
 
 pub fn spawn(app: AppHandle) {
     let version = app.package_info().version.to_string();
@@ -67,9 +63,7 @@ pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(FIRST_CHECK_AFTER).await;
         loop {
-            if auto_update_on(&app) {
-                check(&app, true, true).await;
-            }
+            check(&app, true, true).await;
             tokio::time::sleep(EVERY).await;
         }
     });

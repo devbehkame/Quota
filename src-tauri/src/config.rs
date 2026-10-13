@@ -14,7 +14,7 @@ pub struct Settings {
     /// "system", "light" or "dark".
     pub theme: String,
     pub widget: WidgetSettings,
-    /// Download and install new versions automatically.
+    /// Kept for older config files; updates are always automatic now.
     pub auto_update: bool,
 }
 

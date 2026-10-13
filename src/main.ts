@@ -473,6 +473,106 @@ function openMenu(anchor: HTMLElement, items: MenuItem[]) {
 function closeMenu() {
   openMenuEl?.remove();
   openMenuEl = null;
+  document.querySelectorAll('.dd[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false"));
+}
+
+interface Choice {
+  value: string;
+  label: string;
+}
+
+/**
+ * A dropdown styled like the rest of the app. Native <select> lists are drawn
+ * by Windows and can't be themed, so this renders its own list. Keyboard:
+ * Enter/Space/arrows open it, arrows move, Enter picks, Escape closes.
+ */
+function dropdown(choices: Choice[], value: string, onChange: (v: string) => void, label: string): HTMLButtonElement {
+  let current = value;
+  const text = h("span", { class: "dd-text" }, choices.find((c) => c.value === value)?.label ?? "");
+  const btn = h(
+    "button",
+    { class: "input dd", type: "button", "aria-haspopup": "listbox", "aria-expanded": "false", "aria-label": label },
+    text,
+  );
+
+  const close = (refocus: boolean) => {
+    closeMenu();
+    btn.setAttribute("aria-expanded", "false");
+    if (refocus) btn.focus();
+  };
+
+  const pick = (c: Choice) => {
+    const changed = c.value !== current;
+    current = c.value;
+    text.textContent = c.label;
+    close(true);
+    if (changed) onChange(c.value);
+  };
+
+  const open = () => {
+    closeMenu();
+    const options = choices.map((c) => {
+      const selected = c.value === current;
+      const opt = h(
+        "button",
+        {
+          class: `menu-item option${selected ? " selected" : ""}`,
+          type: "button",
+          role: "option",
+          "aria-selected": String(selected),
+        },
+        h("span", { class: "option-label" }, c.label),
+        selected ? icon("check", 14) : null,
+      );
+      opt.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pick(c);
+      });
+      return opt;
+    });
+    const list = h("div", { class: "menu listbox", role: "listbox", "aria-label": label }, ...options);
+    list.addEventListener("keydown", (e) => {
+      const i = options.indexOf(document.activeElement as HTMLButtonElement);
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = e.key === "ArrowDown" ? Math.min(options.length - 1, i + 1) : Math.max(0, i - 1);
+        options[next]?.focus();
+      } else if (e.key === "Home" || e.key === "End") {
+        e.preventDefault();
+        options[e.key === "Home" ? 0 : options.length - 1]?.focus();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation(); // don't close the dialog too
+        close(true);
+      } else if (e.key === "Tab") {
+        close(false);
+      }
+    });
+    // Inside a modal dialog the list must live in the dialog to appear above it.
+    (btn.closest("dialog") ?? document.body).append(list);
+    const r = btn.getBoundingClientRect();
+    list.style.minWidth = `${r.width}px`;
+    const lh = list.offsetHeight;
+    const below = r.bottom + 4 + lh <= window.innerHeight - 8;
+    list.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - list.offsetWidth - 8))}px`;
+    list.style.top = `${below ? r.bottom + 4 : Math.max(8, r.top - lh - 4)}px`;
+    openMenuEl = list;
+    btn.setAttribute("aria-expanded", "true");
+    (options.find((o) => o.classList.contains("selected")) ?? options[0])?.focus();
+  };
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (btn.getAttribute("aria-expanded") === "true") close(false);
+    else open();
+  });
+  btn.addEventListener("keydown", (e) => {
+    if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) {
+      e.preventDefault();
+      open();
+    }
+  });
+  return btn;
 }
 
 function toast(message: string, kind: "info" | "error" = "info") {
@@ -823,17 +923,19 @@ async function openSettings() {
     }),
   );
 
-  const interval = h(
-    "select",
-    { class: "input", id: "s-interval" },
-    ...[0, 1, 2, 5, 10, 15, 30, 60].map((m) =>
-      h("option", { value: m, selected: s.refreshMinutes === m }, m === 0 ? "Off" : m === 1 ? "Every minute" : `Every ${m} minutes`),
-    ),
+  const interval = dropdown(
+    [0, 1, 2, 5, 10, 15, 30, 60].map((m) => ({
+      value: String(m),
+      label: m === 0 ? "Off" : m === 1 ? "Every minute" : `Every ${m} minutes`,
+    })),
+    String(s.refreshMinutes),
+    (v) => {
+      s.refreshMinutes = Number(v);
+      void save();
+    },
+    "Auto-refresh",
   );
-  interval.addEventListener("change", () => {
-    s.refreshMinutes = Number(interval.value);
-    void save();
-  });
+
 
   const trayToggle = toggle(s.closeToTray, (v) => {
     s.closeToTray = v;
@@ -869,7 +971,7 @@ async function openSettings() {
         settingRow("Start with Windows", "Launch minimized to the tray when you sign in.", autostartToggle),
       ),
       widgetSettings(s, save),
-      await updateSettings(s, save),
+      await updateSettings(),
       h(
         "div",
         { class: "callout info" },
@@ -913,8 +1015,8 @@ function updateText(u: UpdateStatus): string {
   }
 }
 
-/** "Updates": automatic install on/off, status, and a Check now button. */
-async function updateSettings(s: Settings, save: () => Promise<void>): Promise<HTMLElement> {
+/** "Updates": always automatic; shows the status and a Check now button. */
+async function updateSettings(): Promise<HTMLElement> {
   let status: UpdateStatus | null = null;
   try {
     status = await api.updateStatus();
@@ -923,10 +1025,6 @@ async function updateSettings(s: Settings, save: () => Promise<void>): Promise<H
   }
   const line = h("small", { class: "hint", "aria-live": "polite" }, status ? updateText(status) : "");
   updateLine = line;
-  const auto = toggle(s.autoUpdate, (v) => {
-    s.autoUpdate = v;
-    void save();
-  });
   const checkBtn = h(
     "button",
     {
@@ -952,11 +1050,16 @@ async function updateSettings(s: Settings, save: () => Promise<void>): Promise<H
     h(
       "div",
       { class: "settings" },
-      settingRow("Install updates automatically", "Checks every 5 minutes and updates silently in the background.", auto),
       h(
         "div",
         { class: "setting" },
-        h("div", null, h("div", { class: "setting-title" }, "Status"), line),
+        h(
+          "div",
+          null,
+          h("div", { class: "setting-title" }, "Automatic updates"),
+          h("small", { class: "hint" }, "Checked every 5 minutes and installed silently in the background."),
+          line,
+        ),
         checkBtn,
       ),
     ),
@@ -982,27 +1085,26 @@ function widgetSettings(s: Settings, save: () => Promise<void>): HTMLElement {
   const drawSlots = () => {
     const current = [...s.widget.slots];
     const rows = current.map((slot, i) => {
-      const acc = h(
-        "select",
-        { class: "input", "aria-label": `Slot ${i + 1} account` },
-        ...accounts.map((a) => h("option", { value: a.id, selected: slot.accountId === a.id }, a.label)),
+      const acc = dropdown(
+        accounts.map((a) => ({ value: a.id, label: a.label })),
+        slot.accountId,
+        (v) => {
+          current[i] = { accountId: v, meter: null };
+          setSlots(current);
+        },
+        `Slot ${i + 1} account`,
       );
       const labels = (snaps.get(slot.accountId)?.usage?.meters ?? []).map((m) => m.label);
       if (slot.meter && !labels.includes(slot.meter)) labels.push(slot.meter);
-      const meter = h(
-        "select",
-        { class: "input", "aria-label": `Slot ${i + 1} gauge` },
-        h("option", { value: "", selected: !slot.meter }, "Tightest limit"),
-        ...labels.map((l) => h("option", { value: l, selected: slot.meter === l }, l)),
+      const meter = dropdown(
+        [{ value: "", label: "Tightest limit" }, ...labels.map((l) => ({ value: l, label: l }))],
+        slot.meter ?? "",
+        (v) => {
+          current[i] = { ...current[i]!, meter: v || null };
+          setSlots(current);
+        },
+        `Slot ${i + 1} gauge`,
       );
-      acc.addEventListener("change", () => {
-        current[i] = { accountId: acc.value, meter: null };
-        setSlots(current);
-      });
-      meter.addEventListener("change", () => {
-        current[i] = { ...current[i]!, meter: meter.value || null };
-        setSlots(current);
-      });
       const remove = h(
         "button",
         { class: "icon-btn ghost small", type: "button", "aria-label": `Remove slot ${i + 1}`, title: "Remove" },

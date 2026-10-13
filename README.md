@@ -42,7 +42,7 @@ To see your plan limits:
 
 ## Automatic updates
 
-Every push to the default branch builds a new version (`0.1.<build number>`), signs it and publishes it as a GitHub Release. The app checks every 5 minutes and updates itself silently: there's no prompt or installer window. If you're using the UsageCheck window at that moment, it waits (up to an hour) until you're done, then installs and restarts. If it was in the tray, it restarts in the tray. You can turn this off, or click **Check now**, in Settings → Updates. An update is only installed if its signature matches the public key built into the app.
+Every push to the default branch builds a new version (`0.1.<build number>`), signs it and publishes it as a GitHub Release. The app checks every 5 minutes and updates itself silently: there's no prompt or installer window. If you're using the UsageCheck window at that moment, it waits (up to an hour) until you're done, then installs and restarts. If it was in the tray, it restarts in the tray. Updates are always on; Settings → Updates shows the status and has a **Check now** button. An update is only installed if its signature matches the public key built into the app.
 
 One-time setup in the GitHub repository (**Settings → Secrets and variables → Actions**):
 
