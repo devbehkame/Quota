@@ -37,6 +37,8 @@ export interface Usage {
   plan: string | null;
   meters: Meter[];
   notes: string[];
+  /** The signed-in account (email or username), when the sign-in says. */
+  signedInAs: string | null;
 }
 
 export interface Snapshot {

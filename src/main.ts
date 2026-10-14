@@ -401,7 +401,12 @@ function card(a: Account): HTMLElement {
       h(
         "div",
         { class: "titles" },
-        h("div", { class: "title", title: a.label }, a.label),
+        h(
+          "div",
+          { class: "title-row" },
+          h("div", { class: "title", title: a.label }, a.label),
+          usage?.signedInAs ? h("div", { class: "who", title: usage.signedInAs }, usage.signedInAs) : null,
+        ),
         h(
           "div",
           { class: "subtitle" },

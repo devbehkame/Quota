@@ -445,6 +445,24 @@ h1 {
   text-overflow: ellipsis;
 }
 
+.title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* The signed-in account, on the right of the title. */
+.who {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .subtitle {
   display: flex;
   align-items: center;

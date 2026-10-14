@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::util::{num, send_json, timestamp};
@@ -52,6 +53,31 @@ fn parse_credentials(raw: &str) -> Result<Credentials, UsageError> {
     })
 }
 
+/// Claude Code keeps the signed-in account in `.claude.json`: in the config folder
+/// when one is set, otherwise next to it in the home folder.
+fn account_email(over: Option<&str>) -> Option<String> {
+    let dir = super::config_dir(over, "CLAUDE_CONFIG_DIR", ".claude")?;
+    let mut files = vec![dir.join(".claude.json")];
+    files.extend(dir.parent().map(|p| p.join(".claude.json")));
+    files.iter().find_map(|f| parse_account_email(&std::fs::read_to_string(f).ok()?))
+}
+
+/// The file also holds Claude Code's project history, so only `oauthAccount` is decoded.
+fn parse_account_email(raw: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Global {
+        #[serde(rename = "oauthAccount")]
+        oauth_account: Option<OAuthAccount>,
+    }
+    #[derive(Deserialize)]
+    struct OAuthAccount {
+        #[serde(rename = "emailAddress")]
+        email_address: Option<String>,
+    }
+    let g: Global = serde_json::from_str(raw).ok()?;
+    g.oauth_account?.email_address.map(|e| e.trim().to_owned()).filter(|e| e.contains('@'))
+}
+
 fn plan_name(sub: Option<&str>, tier: Option<&str>) -> Option<String> {
     let tier = tier.unwrap_or_default().to_ascii_lowercase();
     for (needle, name) in [("max_20x", "Max 20x"), ("max_5x", "Max 5x")] {
@@ -66,8 +92,8 @@ fn plan_name(sub: Option<&str>, tier: Option<&str>) -> Option<String> {
 }
 
 pub async fn fetch(client: &reqwest::Client, account: &Account, manual_token: Option<&str>) -> Result<Usage, UsageError> {
-    let (token, plan) = match manual_token {
-        Some(t) => (t.to_owned(), None),
+    let (token, plan, email) = match manual_token {
+        Some(t) => (t.to_owned(), None, None),
         None => {
             let c = read_credentials(account)?;
             if c.expires_at.is_some_and(|e| e < Utc::now()) {
@@ -76,7 +102,7 @@ pub async fn fetch(client: &reqwest::Client, account: &Account, manual_token: Op
                         .into(),
                 ));
             }
-            (c.token, c.plan)
+            (c.token, c.plan, account_email(account.data_path.as_deref()))
         }
     };
     let body = send_json(
@@ -98,7 +124,7 @@ pub async fn fetch(client: &reqwest::Client, account: &Account, manual_token: Op
     if meters.is_empty() {
         return Err(UsageError::Parse("no usage windows in the response".into()));
     }
-    Ok(Usage { plan, meters, notes: vec![] })
+    Ok(Usage { plan, meters, notes: vec![], signed_in_as: email })
 }
 
 /// Understands both the newer `limits` array and the older flat `five_hour` / `seven_day` shape.
@@ -205,5 +231,12 @@ mod tests {
         assert!(c.expires_at.is_some());
         assert_eq!(plan_name(Some("pro"), None).as_deref(), Some("Pro"));
         assert!(parse_credentials("{}").is_err());
+    }
+
+    #[test]
+    fn reads_account_email() {
+        let raw = r#"{"numStartups":3,"projects":{"C:/x":{"history":[]}},"oauthAccount":{"accountUuid":"u","emailAddress":"me@example.com","organizationName":"Org"}}"#;
+        assert_eq!(parse_account_email(raw).as_deref(), Some("me@example.com"));
+        assert_eq!(parse_account_email(r#"{"projects":{}}"#), None);
     }
 }

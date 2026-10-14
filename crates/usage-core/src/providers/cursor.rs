@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use chrono::{TimeZone, Utc};
 use serde_json::Value;
 
-use crate::util::{num, send_json, timestamp};
+use crate::util::{jwt_claims, num, send_json, timestamp};
 use crate::{Account, Meter, Unit, Usage, UsageError};
 
 const SUMMARY_URL: &str = "https://cursor.com/api/usage-summary";
@@ -119,35 +119,6 @@ pub(crate) fn cookie_from_jwt(token: &str) -> Result<String, UsageError> {
     Ok(format!("{COOKIE}={user}%3A%3A{token}"))
 }
 
-fn jwt_claims(token: &str) -> Option<Value> {
-    let payload = token.split('.').nth(1)?;
-    serde_json::from_slice(&base64url(payload)?).ok()
-}
-
-fn base64url(s: &str) -> Option<Vec<u8>> {
-    let mut out = Vec::with_capacity(s.len() * 3 / 4);
-    let mut buf = 0u32;
-    let mut bits = 0;
-    for c in s.bytes().filter(|c| *c != b'=') {
-        let v = match c {
-            b'A'..=b'Z' => c - b'A',
-            b'a'..=b'z' => c - b'a' + 26,
-            b'0'..=b'9' => c - b'0' + 52,
-            b'-' | b'+' => 62,
-            b'_' | b'/' => 63,
-            _ => return None,
-        } as u32;
-        buf = (buf << 6) | v;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((buf >> bits) as u8);
-            buf &= (1 << bits) - 1;
-        }
-    }
-    Some(out)
-}
-
 /// `GET /api/usage-summary`: cents for amounts, percentages already in 0–100.
 pub(crate) fn parse_summary(v: &Value) -> Option<Usage> {
     let reset = timestamp(&v["billingCycleEnd"]);
@@ -195,7 +166,7 @@ pub(crate) fn parse_summary(v: &Value) -> Option<Usage> {
         let mut c = s.chars();
         c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
     });
-    Some(Usage { plan: plan_name, meters, notes })
+    Some(Usage { plan: plan_name, meters, notes, signed_in_as: None })
 }
 
 #[cfg(test)]

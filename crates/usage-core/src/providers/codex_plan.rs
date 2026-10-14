@@ -18,7 +18,7 @@ use std::time::SystemTime;
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 
-use crate::util::{num, send_json, timestamp};
+use crate::util::{jwt_claims, num, send_json, timestamp};
 use crate::{Account, Meter, Usage, UsageError};
 
 const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
@@ -40,8 +40,17 @@ pub fn auth_path(over: Option<&str>) -> Option<PathBuf> {
 }
 
 pub async fn fetch(client: &reqwest::Client, account: &Account) -> Result<Usage, UsageError> {
+    let auth = read_auth(account.data_path.as_deref());
+    let email = auth.as_ref().and_then(|a| a.email.clone());
+    fetch_usage(client, account, auth).await.map(|mut u| {
+        u.signed_in_as = email;
+        u
+    })
+}
+
+async fn fetch_usage(client: &reqwest::Client, account: &Account, auth: Option<Auth>) -> Result<Usage, UsageError> {
     let over = account.data_path.as_deref();
-    let live_err = match read_auth(over) {
+    let live_err = match auth {
         Some(auth) => match fetch_live(client, &auth).await {
             Ok(u) => return Ok(u),
             Err(e) => Some(e),
@@ -75,6 +84,8 @@ pub async fn fetch(client: &reqwest::Client, account: &Account) -> Result<Usage,
 struct Auth {
     access_token: String,
     account_id: Option<String>,
+    /// From the ChatGPT sign-in's ID token.
+    email: Option<String>,
 }
 
 fn read_auth(over: Option<&str>) -> Option<Auth> {
@@ -87,7 +98,14 @@ fn parse_auth(raw: &str) -> Option<Auth> {
     let t = &v["tokens"];
     let access_token = t["access_token"].as_str().filter(|s| !s.is_empty())?.to_owned();
     let account_id = t["account_id"].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
-    Some(Auth { access_token, account_id })
+    let claims = t["id_token"].as_str().and_then(jwt_claims).unwrap_or_default();
+    let email = claims["email"]
+        .as_str()
+        .or(claims["https://api.openai.com/profile"]["email"].as_str())
+        .map(str::trim)
+        .filter(|e| e.contains('@'))
+        .map(str::to_owned);
+    Some(Auth { access_token, account_id, email })
 }
 
 async fn fetch_live(client: &reqwest::Client, auth: &Auth) -> Result<Usage, UsageError> {
@@ -296,7 +314,7 @@ pub(crate) fn to_usage(found: Found, now: DateTime<Utc>, note: Option<String>) -
         .enumerate()
         .map(|(i, w)| window_meter(window_label(w.window_minutes, i), w, now))
         .collect();
-    Usage { plan: found.plan, meters, notes: note.into_iter().collect() }
+    Usage { plan: found.plan, meters, notes: note.into_iter().collect(), signed_in_as: None }
 }
 
 #[cfg(test)]
@@ -396,6 +414,10 @@ mod tests {
         let a = parse_auth(r#"{"OPENAI_API_KEY":null,"tokens":{"id_token":"x.y.z","access_token":"acc","refresh_token":"ref","account_id":"org-1"},"last_refresh":"2026-10-01T00:00:00Z"}"#).unwrap();
         assert_eq!(a.access_token, "acc");
         assert_eq!(a.account_id.as_deref(), Some("org-1"));
+        assert_eq!(a.email, None);
+        // {"email":"me@example.com"}
+        let a = parse_auth(r#"{"tokens":{"id_token":"x.eyJlbWFpbCI6Im1lQGV4YW1wbGUuY29tIn0.z","access_token":"acc"}}"#).unwrap();
+        assert_eq!(a.email.as_deref(), Some("me@example.com"));
         assert!(parse_auth(r#"{"OPENAI_API_KEY":"sk-123"}"#).is_none());
     }
 

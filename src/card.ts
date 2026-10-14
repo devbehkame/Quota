@@ -53,7 +53,12 @@ function render() {
       h(
         "div",
         { class: "titles" },
-        h("div", { class: "title" }, a.label),
+        h(
+          "div",
+          { class: "title-row" },
+          h("div", { class: "title" }, a.label),
+          usage?.signedInAs ? h("div", { class: "who", title: usage.signedInAs }, usage.signedInAs) : null,
+        ),
         h("div", { class: "subtitle" }, p.name, usage?.plan ? h("span", { class: "pill" }, usage.plan) : null),
       ),
     ),

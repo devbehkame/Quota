@@ -164,7 +164,7 @@ pub(crate) fn parse_quota(v: &Value) -> Option<Usage> {
     if !unlimited.is_empty() {
         notes.push(format!("Unlimited: {}.", unlimited.join(", ").to_lowercase()));
     }
-    Some(Usage { plan: plan_name(v), meters, notes })
+    Some(Usage { plan: plan_name(v), meters, notes, signed_in_as: github_login(&v["login"]) })
 }
 
 fn quota_label(key: &str) -> String {
@@ -217,9 +217,7 @@ async fn fetch_billing(client: &reqwest::Client, token: &str, allowance: Option<
             .header("x-github-api-version", "2022-11-28")
     };
     let user = send_json(gh(USER_URL)).await?;
-    let login = user["login"]
-        .as_str()
-        .filter(|l| l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+    let login = github_login(&user["login"])
         .ok_or_else(|| UsageError::Parse("could not read your GitHub username".into()))?;
     let now = Utc::now();
     let url = format!(
@@ -234,7 +232,15 @@ async fn fetch_billing(client: &reqwest::Client, token: &str, allowance: Option<
         ),
         other => other,
     })?;
-    Ok(billing_usage(&report, allowance, now))
+    let mut usage = billing_usage(&report, allowance, now);
+    usage.signed_in_as = Some(login);
+    Ok(usage)
+}
+
+fn github_login(v: &Value) -> Option<String> {
+    v.as_str()
+        .filter(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        .map(str::to_owned)
 }
 
 pub(crate) fn billing_usage(report: &Value, allowance: Option<f64>, now: DateTime<Utc>) -> Usage {
@@ -254,7 +260,7 @@ pub(crate) fn billing_usage(report: &Value, allowance: Option<f64>, now: DateTim
     if allowance.is_none() {
         notes.push("Set your monthly allowance (e.g. 300 for Pro) on this account to see how many are left.".into());
     }
-    Usage { plan: None, meters: vec![meter], notes }
+    Usage { plan: None, meters: vec![meter], notes, signed_in_as: None }
 }
 
 #[cfg(test)]
@@ -265,6 +271,7 @@ mod tests {
     #[test]
     fn parses_quota_snapshots() {
         let v = json!({
+            "login": "octocat",
             "copilot_plan": "individual",
             "quota_reset_date": "2026-11-01",
             "quota_snapshots": {
@@ -276,6 +283,7 @@ mod tests {
         });
         let u = parse_quota(&v).unwrap();
         assert_eq!(u.plan.as_deref(), Some("Pro"));
+        assert_eq!(u.signed_in_as.as_deref(), Some("octocat"));
         assert_eq!(u.meters.len(), 1);
         let m = &u.meters[0];
         assert_eq!((m.used, m.limit, m.remaining), (Some(229.0), Some(300.0), Some(71.0)));

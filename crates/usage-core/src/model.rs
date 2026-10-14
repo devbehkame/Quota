@@ -152,6 +152,8 @@ pub struct Usage {
     pub plan: Option<String>,
     pub meters: Vec<Meter>,
     pub notes: Vec<String>,
+    /// The signed-in account (email or username), when the sign-in says.
+    pub signed_in_as: Option<String>,
 }
 
 /// The result of one refresh, as sent to the UI.

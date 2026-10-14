@@ -425,7 +425,7 @@ pub(crate) fn parse_cli_report(v: &Value) -> Option<Usage> {
             meters.push(Meter::percent(label, used, timestamp(&b["reset_time"])));
         }
     }
-    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec!["From the Antigravity CLI (agy).".into()] })
+    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec!["From the Antigravity CLI (agy).".into()], signed_in_as: None })
 }
 
 /// Newer builds: `{ response: { groups: [{ displayName, buckets: [{ displayName,
@@ -455,7 +455,7 @@ pub(crate) fn parse_summary(v: &Value) -> Option<Usage> {
             meters.push(m);
         }
     }
-    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec![] })
+    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec![], signed_in_as: None })
 }
 
 /// Remaining fraction, reset time and the model labels sharing one quota.
@@ -520,7 +520,8 @@ pub(crate) fn parse(v: &Value) -> Option<Usage> {
         .or(plan_info["planName"].as_str())
         .filter(|p| !p.is_empty())
         .map(str::to_owned);
-    Some(Usage { plan, meters, notes: vec![] })
+    let email = us["email"].as_str().map(str::trim).filter(|e| e.contains('@')).map(str::to_owned);
+    Some(Usage { plan, meters, notes: vec![], signed_in_as: email })
 }
 
 #[cfg(test)]
@@ -530,6 +531,7 @@ mod tests {
     #[test]
     fn groups_models_into_pools() {
         let v = json!({"userStatus": {
+            "email": "me@gmail.com",
             "userTier": {"name": "Google AI Pro"},
             "planStatus": {"availablePromptCredits": 400, "planInfo": {"planName": "Pro", "monthlyPromptCredits": 500}},
             "cascadeModelConfigData": {"clientModelConfigs": [
@@ -542,6 +544,7 @@ mod tests {
         }});
         let u = parse(&v).unwrap();
         assert_eq!(u.plan.as_deref(), Some("Google AI Pro"));
+        assert_eq!(u.signed_in_as.as_deref(), Some("me@gmail.com"));
         let find = |l: &str| u.meters.iter().find(|m| m.label == l).unwrap();
         let pro = find("Gemini 3 Pro (High) / Gemini 3 Pro (Low)").remaining.unwrap();
         assert!((pro - 60.0).abs() < 1e-9);
