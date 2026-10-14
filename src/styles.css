@@ -207,7 +207,7 @@ h1 {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
   gap: 16px;
   padding: 24px 28px 40px;
   align-items: start;
@@ -448,7 +448,7 @@ h1 {
 .title-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 16px;
 }
 
 /* The signed-in account, on the right of the title. */
