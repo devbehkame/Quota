@@ -79,7 +79,7 @@ Until the signing secrets exist, builds still run and produce installers, but no
 - Drag any card to reorder the dashboard; the order is remembered.
 - **Hover card:** rest the pointer on a widget item to see that account's full card, with every limit, its reset time and notes, just like in the app.
 - Tray icon: hover it to see each account's tightest limit; right-click it to refresh, toggle the taskbar widget, or quit.
-- Optional start with Windows (launches minimized to the tray).
+- Starts with Windows (minimized to the tray); turn it off in Settings. If the startup entry goes missing, for example after running the setup again, Quota adds it back the next time it starts.
 - Light, dark or system theme.
 - A **Test connection** button before you save a key.
 

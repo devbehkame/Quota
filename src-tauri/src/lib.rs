@@ -2,8 +2,11 @@ mod commands;
 mod config;
 mod hovercard;
 mod refresh;
+#[cfg(windows)]
+mod registry;
 mod rename;
 mod secrets;
+mod startup;
 mod tray;
 mod updater;
 mod widget;
@@ -47,6 +50,7 @@ pub fn run() {
             widget::sync(app.handle());
             updater::spawn(app.handle().clone());
             rename::spawn(app.handle().clone());
+            startup::sync(app.handle());
 
             // The window starts hidden to avoid a white flash; show it unless we were
             // launched at login with --minimized.

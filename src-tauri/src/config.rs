@@ -11,6 +11,8 @@ pub struct Settings {
     /// Auto-refresh interval in minutes; 0 turns auto-refresh off.
     pub refresh_minutes: u32,
     pub close_to_tray: bool,
+    /// Launch minimized to the tray at sign-in. On by default; see `startup`.
+    pub start_with_windows: bool,
     /// "system", "light" or "dark".
     pub theme: String,
     pub widget: WidgetSettings,
@@ -23,6 +25,7 @@ impl Default for Settings {
         Settings {
             refresh_minutes: 5,
             close_to_tray: true,
+            start_with_windows: true,
             theme: "system".into(),
             widget: WidgetSettings::default(),
             auto_update: true,

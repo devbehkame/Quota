@@ -49,6 +49,7 @@ export interface Snapshot {
 export interface Settings {
   refreshMinutes: number;
   closeToTray: boolean;
+  startWithWindows: boolean;
   theme: "system" | "light" | "dark";
   widget: WidgetSettings;
   autoUpdate: boolean;

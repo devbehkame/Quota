@@ -954,7 +954,11 @@ async function openSettings() {
       else await disableAutostart();
     } catch (e) {
       toast(errorText(e), "error");
+      return;
     }
+    // Remembered too, so the app can put the startup entry back if it goes missing.
+    s.startWithWindows = v;
+    void save();
   });
 
   d = modal([
