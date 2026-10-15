@@ -51,18 +51,19 @@ export function meter(m: Meter): HTMLElement {
   );
 }
 
-/** One line per reset: what it is (bold) and when it expires. */
-function resetList(r: LimitResets): HTMLElement {
+/** One line per reset, soonest first, up to `max`: what it is (bold) and when it expires. */
+function resetList(r: LimitResets, max: number): HTMLElement {
   if (!r.items.length) {
     const msg = r.available
       ? "The expiry dates weren't reported."
       : "None right now. When you get one, it shows here with its expiry date.";
     return h("p", { class: "reset-empty" }, msg);
   }
+  const more = r.items.length - max;
   return h(
     "ul",
     { class: "reset-list" },
-    ...r.items.map((i) =>
+    ...r.items.slice(0, max).map((i) =>
       h(
         "li",
         null,
@@ -74,6 +75,7 @@ function resetList(r: LimitResets): HTMLElement {
         ),
       ),
     ),
+    more > 0 ? h("li", { class: "reset-more" }, `+${more} more`) : null,
   );
 }
 
@@ -109,8 +111,8 @@ addEventListener("blur", hideTip);
 
 /**
  * Banked limit resets: the count on the card, each one's expiry date on hover.
- * `inline` shows the soonest-expiring one under the row instead, for the widget's
- * hover card, whose small window would cut a popover off.
+ * `inline` lists up to three, soonest first, under the row instead, for the
+ * widget's hover card, whose small window would cut a popover off.
  */
 export function resetsRow(r: LimitResets, inline = false): HTMLElement {
   const next = r.items.find((i) => i.expiresAt)?.expiresAt ?? null;
@@ -126,10 +128,10 @@ export function resetsRow(r: LimitResets, inline = false): HTMLElement {
     ),
   );
   if (inline) {
-    // Only the one expiring first; the row already says how many there are.
-    return r.items.length ? h("div", { class: "resets-block" }, row, resetList({ ...r, items: r.items.slice(0, 1) })) : row;
+    // At most the three expiring first.
+    return r.items.length ? h("div", { class: "resets-block" }, row, resetList(r, 3)) : row;
   }
-  const open = () => showTip(row, resetList(r));
+  const open = () => showTip(row, resetList(r, Infinity));
   row.addEventListener("mouseenter", open);
   row.addEventListener("focus", open);
   row.addEventListener("mouseleave", hideTip);
