@@ -18,13 +18,20 @@ use tauri::{Manager, WindowEvent};
 
 use commands::AppState;
 
-const MINIMIZED_ARG: &str = "--minimized";
+/// Passed by the startup entry (and by updates that restart into the tray):
+/// run in the background with just the tray icon and the widget, no window.
+pub(crate) const MINIMIZED_ARG: &str = "--minimized";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // Must be registered first: a second launch just focuses the running window.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main(app)))
+        // Must be registered first: a second launch just focuses the running window,
+        // unless it's the startup entry finding Quota already running.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !args.iter().any(|a| a == MINIMIZED_ARG) {
+                tray::show_main(app);
+            }
+        }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![MINIMIZED_ARG]),

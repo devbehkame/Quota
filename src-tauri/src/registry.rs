@@ -4,7 +4,9 @@ use std::ffi::c_void;
 use std::ptr::null_mut;
 
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
-use windows_sys::Win32::System::Registry::{RegDeleteKeyValueW, RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
+use windows_sys::Win32::System::Registry::{
+    RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_SZ,
+};
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
@@ -33,6 +35,23 @@ pub fn get_string(key: &str, name: &str) -> Option<String> {
     let len = (size as usize / 2).min(buf.len());
     let s = String::from_utf16_lossy(&buf[..len]).trim_end_matches('\0').to_string();
     (!s.is_empty()).then_some(s)
+}
+
+/// Writes a REG_SZ value under HKEY_CURRENT_USER; the key must already exist.
+pub fn set_string(key: &str, name: &str, value: &str) -> bool {
+    let (key, name, value) = (wide(key), wide(name), wide(value));
+    // SAFETY: all three strings are NUL-terminated; the size includes the NUL.
+    let status = unsafe {
+        RegSetKeyValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            name.as_ptr(),
+            REG_SZ,
+            value.as_ptr() as *const c_void,
+            (value.len() * 2) as u32,
+        )
+    };
+    status == ERROR_SUCCESS
 }
 
 pub fn delete_value(key: &str, name: &str) {

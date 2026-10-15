@@ -80,7 +80,7 @@ Until the signing secrets exist, builds still run and produce installers, but no
 - **Hover card:** rest the pointer on a widget item to see that account's full card, with every limit, its reset time and notes, just like in the app.
 - Each card shows which account it is signed in as (email or GitHub username) for Claude, ChatGPT, Copilot and Antigravity, read from the same sign-in Quota already uses.
 - Tray icon: hover it to see each account's tightest limit; right-click it to refresh, toggle the taskbar widget, or quit.
-- Starts with Windows (minimized to the tray); turn it off in Settings. If the startup entry goes missing, for example after running the setup again, Quota adds it back the next time it starts.
+- Starts with Windows in the background: just the tray icon and the taskbar widget, no window. Turn it off in Settings. If the startup entry goes missing, for example after running the setup again, Quota adds it back the next time it starts.
 - Light, dark or system theme.
 - A **Test connection** button before you save a key.
 
