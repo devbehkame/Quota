@@ -41,7 +41,7 @@ function render() {
       "div",
       { class: "card-body" },
       ...(usage?.meters ?? []).map(meter),
-      usage?.resets ? resetsRow(usage.resets) : null,
+      usage?.resets ? resetsRow(usage.resets, true) : null,
       usage?.notes.length ? h("ul", { class: "notes" }, ...usage.notes.map((n) => h("li", null, n))) : null,
     );
   }

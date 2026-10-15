@@ -571,7 +571,13 @@ body.dragging * {
   flex-wrap: wrap;
   gap: 4px 8px;
   font-size: 12px;
-  cursor: help;
+  cursor: default;
+  border-radius: var(--radius-sm);
+}
+
+.resets:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
 }
 
 .resets-value {
@@ -587,6 +593,67 @@ body.dragging * {
 .resets.none .resets-count {
   color: var(--muted);
   font-weight: 550;
+}
+
+.resets-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tip {
+  position: fixed;
+  z-index: 60;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  font-size: 12px;
+  pointer-events: none;
+  animation: pop 0.12s ease-out;
+}
+
+.reset-list {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reset-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.resets-block .reset-list {
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.reset-name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.reset-times {
+  color: var(--muted);
+  font-weight: 550;
+}
+
+.reset-when {
+  color: var(--muted);
+}
+
+.reset-empty {
+  margin: 0;
+  color: var(--muted);
 }
 
 .meter-value {

@@ -51,21 +51,72 @@ export function meter(m: Meter): HTMLElement {
   );
 }
 
-/** Banked limit resets: the count on the card, each one's expiry date on hover. */
-export function resetsRow(r: LimitResets): HTMLElement {
-  const lines = r.items.map((i) => {
-    const what = `${i.count} ${i.count === 1 ? "reset" : "resets"}${i.label ? ` · ${i.label}` : ""}`;
-    return i.expiresAt ? `${what} · expires ${dateLabel(i.expiresAt)} (${until(i.expiresAt)})` : `${what} · no expiry date`;
-  });
-  const tip = lines.length
-    ? lines.join("\n")
-    : r.available
+/** One line per reset: what it is (bold) and when it expires. */
+function resetList(r: LimitResets): HTMLElement {
+  if (!r.items.length) {
+    const msg = r.available
       ? "The expiry dates weren't reported."
       : "None right now. When you get one, it shows here with its expiry date.";
-  const next = r.items.find((i) => i.expiresAt)?.expiresAt ?? null;
+    return h("p", { class: "reset-empty" }, msg);
+  }
   return h(
+    "ul",
+    { class: "reset-list" },
+    ...r.items.map((i) =>
+      h(
+        "li",
+        null,
+        h("span", { class: "reset-name" }, i.label ?? "Limit reset", i.count > 1 ? h("span", { class: "reset-times" }, ` ×${i.count}`) : null),
+        h(
+          "span",
+          { class: "reset-when" },
+          i.expiresAt ? `Expires ${dateLabel(i.expiresAt)} · ${until(i.expiresAt)}` : "No expiry date",
+        ),
+      ),
+    ),
+  );
+}
+
+let tipEl: HTMLElement | null = null;
+
+function hideTip() {
+  tipEl?.remove();
+  tipEl = null;
+}
+
+/** A styled popover under (or above) `anchor`, kept inside the window. */
+function showTip(anchor: HTMLElement, content: HTMLElement) {
+  hideTip();
+  const tip = h("div", { class: "tip", role: "tooltip" }, content);
+  document.body.append(tip);
+  tipEl = tip;
+  const r = anchor.getBoundingClientRect();
+  const w = tip.offsetWidth;
+  const hgt = tip.offsetHeight;
+  tip.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+  tip.style.top = `${r.bottom + 6 + hgt > window.innerHeight - 8 ? Math.max(8, r.top - hgt - 6) : r.bottom + 6}px`;
+  // A refresh can replace the card under the pointer without a mouseleave.
+  const check = () => {
+    if (tipEl !== tip) return;
+    if (!anchor.isConnected) hideTip();
+    else setTimeout(check, 400);
+  };
+  setTimeout(check, 400);
+}
+
+addEventListener("scroll", hideTip, true);
+addEventListener("blur", hideTip);
+
+/**
+ * Banked limit resets: the count on the card, each one's expiry date on hover.
+ * `inline` lists the dates under the row instead, for the widget's hover card,
+ * whose small window would cut a popover off.
+ */
+export function resetsRow(r: LimitResets, inline = false): HTMLElement {
+  const next = r.items.find((i) => i.expiresAt)?.expiresAt ?? null;
+  const row = h(
     "div",
-    { class: `resets${r.available ? "" : " none"}`, title: tip },
+    { class: `resets${r.available ? "" : " none"}${inline ? " inline" : ""}`, tabindex: inline ? null : 0 },
     h("span", { class: "meter-label" }, "Limit resets"),
     h(
       "span",
@@ -74,4 +125,13 @@ export function resetsRow(r: LimitResets): HTMLElement {
       next ? h("span", { class: "meter-reset", "data-until": next, "data-prefix": "· next expires " }, `· next expires ${until(next)}`) : null,
     ),
   );
+  if (inline) {
+    return r.items.length ? h("div", { class: "resets-block" }, row, resetList(r)) : row;
+  }
+  const open = () => showTip(row, resetList(r));
+  row.addEventListener("mouseenter", open);
+  row.addEventListener("focus", open);
+  row.addEventListener("mouseleave", hideTip);
+  row.addEventListener("blur", hideTip);
+  return row;
 }
