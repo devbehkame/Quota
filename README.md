@@ -34,6 +34,14 @@ The taskbar widget, next to the clock:
 2. Run it. It installs just for you, so no admin rights are needed.
 3. Click **Add account**. Anything found on your PC (Claude Code, Codex, Copilot, Antigravity) is offered in one click.
 
+### Debian, Ubuntu and other Debian-based Linux
+
+1. Download `Quota_x.y.z_amd64.deb` from the same release (or the `Quota-linux` artifact of a **Build** run).
+2. Install it with `sudo apt install ./Quota_x.y.z_amd64.deb`, which also pulls in what it needs (WebKitGTK and the tray library).
+3. Start **Quota** from the app menu.
+
+On Linux, API keys are kept in your desktop keyring (GNOME Keyring or KWallet), "Start at login" adds an autostart entry, and the widget floats in the bottom-right corner (drag it anywhere). The app doesn't update itself on Linux: install each new .deb the same way. Built for Debian 12 / Ubuntu 22.04 and newer, 64-bit.
+
 To see your plan limits:
 - **Claude:** install Claude Code and run `claude` once to sign in. If the token expires, opening Claude Code renews it.
 - **ChatGPT:** install Codex CLI and run `codex login` with your ChatGPT account. The card then updates live on every refresh. If the sign-in expires, running `codex` once renews it.

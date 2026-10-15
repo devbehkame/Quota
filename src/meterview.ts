@@ -111,7 +111,7 @@ addEventListener("blur", hideTip);
 
 /**
  * Banked limit resets: the count on the card, each one's expiry date on hover.
- * `inline` lists up to three, soonest first, under the row instead, for the
+ * `inline` lists up to two, soonest first, under the row instead, for the
  * widget's hover card, whose small window would cut a popover off.
  */
 export function resetsRow(r: LimitResets, inline = false): HTMLElement {
@@ -128,8 +128,8 @@ export function resetsRow(r: LimitResets, inline = false): HTMLElement {
     ),
   );
   if (inline) {
-    // At most the three expiring first.
-    return r.items.length ? h("div", { class: "resets-block" }, row, resetList(r, 3)) : row;
+    // At most the two expiring first.
+    return r.items.length ? h("div", { class: "resets-block" }, row, resetList(r, 2)) : row;
   }
   const open = () => showTip(row, resetList(r, Infinity));
   row.addEventListener("mouseenter", open);

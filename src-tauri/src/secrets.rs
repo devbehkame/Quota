@@ -1,10 +1,16 @@
-//! API keys live in the Windows Credential Manager (DPAPI-protected, per Windows user).
+//! API keys live in the Windows Credential Manager (DPAPI-protected, per Windows user),
+//! or on Linux in the desktop keyring (GNOME Keyring, KWallet) via the Secret Service.
 //! They are never written to disk by the app and never sent to the UI.
 
 use keyring::Entry;
 use zeroize::Zeroizing;
 
 const SERVICE: &str = "com.usagecheck.app";
+
+#[cfg(windows)]
+const STORE: &str = "Windows Credential Manager";
+#[cfg(not(windows))]
+const STORE: &str = "the system keyring";
 
 fn entry(account_id: &str) -> Result<Entry, String> {
     Entry::new(SERVICE, account_id).map_err(|e| format!("Credential store unavailable: {e}"))
@@ -13,14 +19,14 @@ fn entry(account_id: &str) -> Result<Entry, String> {
 pub fn set(account_id: &str, secret: &str) -> Result<(), String> {
     entry(account_id)?
         .set_password(secret)
-        .map_err(|e| format!("Could not save the key to Windows Credential Manager: {e}"))
+        .map_err(|e| format!("Could not save the key to {STORE}: {e}"))
 }
 
 pub fn get(account_id: &str) -> Result<Option<Zeroizing<String>>, String> {
     match entry(account_id)?.get_password() {
         Ok(s) => Ok(Some(Zeroizing::new(s))),
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("Could not read the key from Windows Credential Manager: {e}")),
+        Err(e) => Err(format!("Could not read the key from {STORE}: {e}")),
     }
 }
 
@@ -31,7 +37,7 @@ pub fn exists(account_id: &str) -> bool {
 pub fn delete(account_id: &str) -> Result<(), String> {
     match entry(account_id)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("Could not remove the key from Windows Credential Manager: {e}")),
+        Err(e) => Err(format!("Could not remove the key from {STORE}: {e}")),
     }
 }
 

@@ -66,6 +66,11 @@
         "installMode": "currentUser"
       }
     },
+    "linux": {
+      "deb": {
+        "depends": ["libayatana-appindicator3-1"]
+      }
+    },
     "createUpdaterArtifacts": true
   },
   "plugins": {

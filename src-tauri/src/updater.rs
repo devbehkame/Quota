@@ -15,6 +15,10 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
 
+/// Linux builds ship as a .deb, which the updater can't install.
+const MANUAL_UPDATES: bool = cfg!(target_os = "linux");
+const MANUAL_MESSAGE: &str = "On Linux, install new versions from the Releases page (the .deb file).";
+
 const EVERY: Duration = Duration::from_secs(5 * 60);
 const FIRST_CHECK_AFTER: Duration = Duration::from_secs(20);
 /// How long an automatic install may wait for the user to stop using the window.
@@ -58,6 +62,11 @@ pub fn spawn(app: AppHandle) {
     });
     // Development builds aren't released, so there is nothing to update to.
     if cfg!(debug_assertions) {
+        return;
+    }
+    // The .deb can't replace itself; new versions are installed from Releases.
+    if MANUAL_UPDATES {
+        set(&app, |s| s.message = Some(MANUAL_MESSAGE.into()));
         return;
     }
     tauri::async_runtime::spawn(async move {
@@ -199,6 +208,13 @@ pub async fn check_for_updates(app: AppHandle) -> UpdateStatus {
         set(&app, |s| {
             s.state = "error";
             s.message = Some("Updates are only available in released builds.".into());
+        });
+        return current(&app);
+    }
+    if MANUAL_UPDATES {
+        set(&app, |s| {
+            s.state = "idle";
+            s.message = Some(MANUAL_MESSAGE.into());
         });
         return current(&app);
     }

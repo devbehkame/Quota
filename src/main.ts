@@ -17,6 +17,7 @@ import {
 import { h, icon, logo } from "./dom";
 import { ago, headline, tickTimes } from "./format";
 import { meter, resetsRow } from "./meterview";
+import { isWindows, keyStore } from "./platform";
 import { PROVIDERS, provider, type ProviderInfo } from "./providers";
 
 // ---------------------------------------------------------------- state
@@ -196,7 +197,7 @@ function startCardDrag(e: PointerEvent) {
 async function removeAccount(a: Account) {
   const ok = await confirmDialog(
     `Remove “${a.label}”?`,
-    "Its saved key will be deleted from Windows Credential Manager.",
+    `Its saved key will be deleted from ${keyStore}.`,
     "Remove",
   );
   if (!ok || !view) return;
@@ -301,7 +302,7 @@ function emptyState(): HTMLElement {
     h(
       "p",
       null,
-      "Add your Claude, ChatGPT and API accounts to see how much usage is left, and when it resets. Keys stay encrypted in Windows Credential Manager.",
+      `Add your Claude, ChatGPT and API accounts to see how much usage is left, and when it resets. Keys stay encrypted in ${keyStore}.`,
     ),
     quick.length ? h("div", { class: "quick" }, h("div", { class: "quick-title" }, "Found on this PC"), ...quick) : null,
     h("button", { class: "btn primary lg", onclick: () => openAccountDialog() }, icon("plus", 16), "Add an account"),
@@ -978,7 +979,7 @@ async function openSettings() {
         settingRow("Theme", null, themeSeg),
         settingRow("Auto-refresh", "How often to check all accounts.", interval),
         settingRow("Keep running in the tray", "Closing the window hides it to the system tray.", trayToggle),
-        settingRow("Start with Windows", "Launch minimized to the tray when you sign in.", autostartToggle),
+        settingRow(isWindows ? "Start with Windows" : "Start at login", "Launch minimized to the tray when you sign in.", autostartToggle),
       ),
       widgetSettings(s, save),
       await updateSettings(),
@@ -992,7 +993,7 @@ async function openSettings() {
           h(
             "p",
             null,
-            "API keys are encrypted in Windows Credential Manager and are only ever sent to their own provider. The interface never sees them after you save.",
+            `API keys are encrypted in ${keyStore} and are only ever sent to their own provider. The interface never sees them after you save.`,
           ),
         ),
       ),
@@ -1021,7 +1022,7 @@ function updateText(u: UpdateStatus): string {
     case "error":
       return u.message ?? "Couldn't check for updates.";
     default:
-      return `You're on the latest version (${u.currentVersion}).`;
+      return u.message ?? `You're on the latest version (${u.currentVersion}).`;
   }
 }
 
@@ -1064,7 +1065,7 @@ async function updateSettings(): Promise<HTMLElement> {
         "div",
         { class: "setting" },
         h("div", null, line),
-        checkBtn,
+        isWindows ? checkBtn : null,
       ),
     ),
   );

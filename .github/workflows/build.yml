@@ -30,7 +30,7 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libdbus-1-dev
       - run: npm ci
       - name: Type-check and build UI
         run: npm run build
@@ -42,8 +42,9 @@ jobs:
   windows:
     needs: test
     runs-on: windows-latest
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      signing: ${{ steps.version.outputs.signing }}
     env:
       # Every push to the default branch becomes a release the app updates to.
       RELEASE: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
@@ -79,21 +80,86 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           NOTES: ${{ github.event.head_commit.message }}
         run: node scripts/latest-json.mjs
-      - name: Publish release
+      - name: Keep the update manifest for the release
         if: env.RELEASE == 'true' && steps.version.outputs.signing == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: update-manifest
+          path: target/release/bundle/nsis/latest.json
+          if-no-files-found: error
+      - name: Release skipped
+        if: env.RELEASE == 'true' && steps.version.outputs.signing != 'true'
+        run: echo "::warning::No release published - add the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets to enable auto-update releases."
+
+  # A .deb for Debian, Ubuntu and their derivatives. Built on the oldest supported
+  # Ubuntu so it runs on older glibc too (Debian 12 and up, Ubuntu 22.04 and up).
+  linux:
+    needs: test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libdbus-1-dev
+      - run: npm ci
+      - name: Set version
+        run: node scripts/ci-version.mjs
+      - name: Build the .deb
+        run: npx tauri build --bundles deb --config src-tauri/tauri.ci.json
+      - name: Upload the .deb
+        uses: actions/upload-artifact@v7
+        with:
+          name: Quota-linux
+          path: target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+  # Every push to the default branch becomes a release the app updates to. It
+  # waits for both builds, but a broken Linux build never holds back Windows.
+  release:
+    needs: [windows, linux]
+    if: >-
+      always() && needs.windows.result == 'success' && needs.windows.outputs.signing == 'true'
+      && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.windows.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: Quota-windows
+          path: release
+      - uses: actions/download-artifact@v7
+        with:
+          name: update-manifest
+          path: release
+      - uses: actions/download-artifact@v7
+        if: needs.linux.result == 'success'
+        with:
+          name: Quota-linux
+          path: release
+      - name: Gather the files
+        run: find release -mindepth 2 -type f -exec mv -t release {} + && ls -l release
+      - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
-          repository: ${{ env.RELEASE_REPO }}
+          repository: ${{ vars.RELEASE_REPO || github.repository }}
           token: ${{ secrets.RELEASES_TOKEN || github.token }}
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Quota ${{ steps.version.outputs.version }}
+          tag_name: v${{ env.VERSION }}
+          name: Quota ${{ env.VERSION }}
           body: ${{ github.event.head_commit.message }}
           make_latest: true
           fail_on_unmatched_files: true
           files: |
-            target/release/bundle/nsis/*-setup.exe
-            target/release/bundle/msi/*.msi
-            target/release/bundle/nsis/latest.json
-      - name: Release skipped
-        if: env.RELEASE == 'true' && steps.version.outputs.signing != 'true'
-        run: echo "::warning::No release published - add the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets to enable auto-update releases."
+            release/*-setup.exe
+            release/*.msi
+            release/latest.json
+            ${{ needs.linux.result == 'success' && 'release/*.deb' || '' }}

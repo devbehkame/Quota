@@ -47,5 +47,9 @@ windows = { version = "0.62", features = [
   "Win32_UI_Accessibility",
 ] }
 
-[target.'cfg(not(windows))'.dependencies]
+# The desktop keyring (GNOME Keyring, KWallet) over the Secret Service API on Linux.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", features = ["sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(not(any(windows, target_os = "linux")))'.dependencies]
 keyring = { version = "3.6" }
