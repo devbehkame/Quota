@@ -122,9 +122,10 @@ async fn fetch_live(client: &reqwest::Client, auth: &Auth) -> Result<Usage, Usag
     let body = send_json(get(client, USAGE_URL, auth)).await?;
     let mut usage =
         parse_live(&body, Utc::now()).ok_or_else(|| UsageError::Parse("no rate-limit windows in the response".into()))?;
-    // The usage response only has the count; the expiry dates take one more call,
-    // made only when there is something to list. Without them the count still shows.
-    if usage.resets.as_ref().is_some_and(|r| r.available > 0) {
+    // The usage response has at most the count; the expiry dates take one more call.
+    // It's skipped only when the count is known to be zero (the count may be missing
+    // from the usage response, so it isn't relied on). If it fails, any count still shows.
+    if usage.resets.as_ref().is_none_or(|r| r.available > 0) {
         if let Ok(details) = send_json(get(client, RESETS_URL, auth)).await {
             if let Some(r) = parse_reset_details(&details, Utc::now()) {
                 usage.resets = Some(r);
