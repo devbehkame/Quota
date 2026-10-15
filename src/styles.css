@@ -564,6 +564,31 @@ body.dragging * {
   white-space: nowrap;
 }
 
+.resets {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12px;
+  cursor: help;
+}
+
+.resets-value {
+  display: flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.resets-count {
+  font-weight: 650;
+}
+
+.resets.none .resets-count {
+  color: var(--muted);
+  font-weight: 550;
+}
+
 .meter-value {
   display: flex;
   align-items: baseline;

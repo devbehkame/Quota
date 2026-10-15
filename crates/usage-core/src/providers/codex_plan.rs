@@ -19,9 +19,11 @@ use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 
 use crate::util::{jwt_claims, num, send_json, timestamp};
-use crate::{Account, Meter, Usage, UsageError};
+use crate::{Account, LimitReset, LimitResets, Meter, Usage, UsageError};
 
 const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
+/// Each banked limit reset with its expiry, as Codex's `/usage` lists them.
+const RESETS_URL: &str = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 
 /// Only the end of each log is scanned; rate-limit events are written every turn.
 const TAIL_BYTES: u64 = 512 * 1024;
@@ -108,13 +110,52 @@ fn parse_auth(raw: &str) -> Option<Auth> {
     Some(Auth { access_token, account_id, email })
 }
 
-async fn fetch_live(client: &reqwest::Client, auth: &Auth) -> Result<Usage, UsageError> {
-    let mut req = client.get(USAGE_URL).bearer_auth(&auth.access_token).header("accept", "application/json");
-    if let Some(id) = &auth.account_id {
-        req = req.header("ChatGPT-Account-Id", id);
+fn get(client: &reqwest::Client, url: &str, auth: &Auth) -> reqwest::RequestBuilder {
+    let req = client.get(url).bearer_auth(&auth.access_token).header("accept", "application/json");
+    match &auth.account_id {
+        Some(id) => req.header("ChatGPT-Account-Id", id),
+        None => req,
     }
-    let body = send_json(req).await?;
-    parse_live(&body, Utc::now()).ok_or_else(|| UsageError::Parse("no rate-limit windows in the response".into()))
+}
+
+async fn fetch_live(client: &reqwest::Client, auth: &Auth) -> Result<Usage, UsageError> {
+    let body = send_json(get(client, USAGE_URL, auth)).await?;
+    let mut usage =
+        parse_live(&body, Utc::now()).ok_or_else(|| UsageError::Parse("no rate-limit windows in the response".into()))?;
+    // The usage response only has the count; the expiry dates take one more call,
+    // made only when there is something to list. Without them the count still shows.
+    if usage.resets.as_ref().is_some_and(|r| r.available > 0) {
+        if let Ok(details) = send_json(get(client, RESETS_URL, auth)).await {
+            if let Some(r) = parse_reset_details(&details, Utc::now()) {
+                usage.resets = Some(r);
+            }
+        }
+    }
+    Ok(usage)
+}
+
+/// `rate_limit_reset_credits.available_count` from the usage response.
+fn reset_count(v: &Value) -> Option<LimitResets> {
+    let n = num(&v["rate_limit_reset_credits"]["available_count"])?;
+    Some(LimitResets { available: n.max(0.0) as u32, items: vec![] })
+}
+
+/// The reset-credits list: one entry per credit, of which only "available" ones count.
+pub(crate) fn parse_reset_details(v: &Value, now: DateTime<Utc>) -> Option<LimitResets> {
+    let credits = v["credits"].as_array()?;
+    let items = credits
+        .iter()
+        .filter(|c| c["status"].as_str() == Some("available"))
+        .filter_map(|c| {
+            let expires_at = timestamp(&c["expires_at"]);
+            if expires_at.is_some_and(|e| e <= now) {
+                return None;
+            }
+            let label = c["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned);
+            Some(LimitReset { label, count: 1, expires_at })
+        })
+        .collect();
+    Some(LimitResets::new(items))
 }
 
 fn live_windows(details: &Value) -> Vec<Window> {
@@ -146,6 +187,7 @@ pub(crate) fn parse_live(v: &Value, now: DateTime<Utc>) -> Option<Usage> {
         return None;
     }
     let mut usage = to_usage(Found { windows, plan: plan_name(&v["plan_type"]), observed_at: now }, now, None);
+    usage.resets = reset_count(v);
     for (label, w) in extra {
         usage.meters.push(window_meter(label, &w, now));
     }
@@ -314,7 +356,7 @@ pub(crate) fn to_usage(found: Found, now: DateTime<Utc>, note: Option<String>) -
         .enumerate()
         .map(|(i, w)| window_meter(window_label(w.window_minutes, i), w, now))
         .collect();
-    Usage { plan: found.plan, meters, notes: note.into_iter().collect(), signed_in_as: None }
+    Usage { plan: found.plan, meters, notes: note.into_iter().collect(), signed_in_as: None, resets: None }
 }
 
 #[cfg(test)]
@@ -335,6 +377,29 @@ mod tests {
         assert_eq!(u.meters[0].remaining, Some(58.0));
         assert_eq!(u.meters[0].resets_at, Some(t(11)));
         assert_eq!(u.meters[1].label, "Weekly");
+    }
+
+    #[test]
+    fn parses_limit_resets() {
+        let now = t(0);
+        let usage = serde_json::json!({
+            "rate_limit": {"primary_window": {"used_percent": 10, "limit_window_seconds": 18000}},
+            "rate_limit_reset_credits": {"available_count": 2}
+        });
+        assert_eq!(parse_live(&usage, now).unwrap().resets.unwrap().available, 2);
+        let plain = serde_json::json!({"rate_limit": {"primary_window": {"used_percent": 10}}});
+        assert_eq!(parse_live(&plain, now).unwrap().resets, None);
+
+        let details = serde_json::json!({"available_count": 2, "credits": [
+            {"id": "b", "reset_type": "full", "status": "available", "granted_at": "2026-06-18T00:00:00Z", "expires_at": null},
+            {"id": "a", "reset_type": "full", "status": "available", "granted_at": "2026-06-17T00:00:00Z",
+             "expires_at": "2099-07-17T00:00:00Z", "title": "Full reset (Weekly + 5 hr)"},
+            {"id": "c", "reset_type": "full", "status": "redeemed", "granted_at": "2026-06-01T00:00:00Z", "expires_at": null}
+        ]});
+        let r = parse_reset_details(&details, now).unwrap();
+        assert_eq!(r.available, 2);
+        assert_eq!(r.items[0].label.as_deref(), Some("Full reset (Weekly + 5 hr)"));
+        assert_eq!(r.items[1].expires_at, None);
     }
 
     #[test]

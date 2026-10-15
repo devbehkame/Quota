@@ -16,7 +16,7 @@ import {
 } from "./api";
 import { h, icon, logo } from "./dom";
 import { ago, headline, tickTimes } from "./format";
-import { meter } from "./meterview";
+import { meter, resetsRow } from "./meterview";
 import { PROVIDERS, provider, type ProviderInfo } from "./providers";
 
 // ---------------------------------------------------------------- state
@@ -370,6 +370,7 @@ function card(a: Account): HTMLElement {
       "div",
       { class: "card-body" },
       ...(usage?.meters ?? []).map(meter),
+      usage?.resets ? resetsRow(usage.resets) : null,
       usage?.notes.length ? h("ul", { class: "notes" }, ...usage.notes.map((n) => h("li", null, n))) : null,
     );
   }

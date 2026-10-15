@@ -27,7 +27,7 @@ pub(crate) fn parse_credits(v: &Value) -> Result<Usage, UsageError> {
     let meter = Meter::spend("Credits", Unit::Usd, used, Some(total))
         .with_detail(format!("{} purchased in total", fmt_money("$", total)));
     let meter = if total <= 0.0 { Meter::balance("Credits", Unit::Usd, 0.0) } else { meter };
-    Ok(Usage { plan: Some("Credits".into()), meters: vec![meter], notes: vec![], signed_in_as: None })
+    Ok(Usage { plan: Some("Credits".into()), meters: vec![meter], notes: vec![], signed_in_as: None, resets: None })
 }
 
 pub(crate) fn parse_key(v: &Value) -> Result<Usage, UsageError> {
@@ -47,6 +47,7 @@ pub(crate) fn parse_key(v: &Value) -> Result<Usage, UsageError> {
         meters: vec![meter],
         notes: vec!["Use a management key to see your whole account balance.".into()],
         signed_in_as: None,
+        resets: None,
     })
 }
 

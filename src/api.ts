@@ -39,6 +39,14 @@ export interface Usage {
   notes: string[];
   /** The signed-in account (email or username), when the sign-in says. */
   signedInAs: string | null;
+  /** Banked limit resets (Claude and ChatGPT plans), when the service reports them. */
+  resets: LimitResets | null;
+}
+
+export interface LimitResets {
+  available: number;
+  /** Soonest expiry first; empty when only the count is known. */
+  items: { label: string | null; count: number; expiresAt: string | null }[];
 }
 
 export interface Snapshot {

@@ -11,9 +11,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::util::{num, send_json, timestamp};
-use crate::{Account, Meter, Usage, UsageError};
+use crate::{Account, LimitReset, LimitResets, Meter, Usage, UsageError};
 
-const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
+/// `cedar_ember=1` adds the banked limit resets, as Claude Code asks for them.
+const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage?cedar_ember=1";
 
 pub fn credentials_path(over: Option<&str>) -> Option<PathBuf> {
     super::config_dir(over, "CLAUDE_CONFIG_DIR", ".claude").map(|d| d.join(".credentials.json"))
@@ -124,7 +125,8 @@ pub async fn fetch(client: &reqwest::Client, account: &Account, manual_token: Op
     if meters.is_empty() {
         return Err(UsageError::Parse("no usage windows in the response".into()));
     }
-    Ok(Usage { plan, meters, notes: vec![], signed_in_as: email })
+    let resets = parse_resets(&body, Utc::now());
+    Ok(Usage { plan, meters, notes: vec![], signed_in_as: email, resets })
 }
 
 /// Understands both the newer `limits` array and the older flat `five_hour` / `seven_day` shape.
@@ -174,6 +176,33 @@ pub(crate) fn parse_usage(v: &Value) -> Vec<Meter> {
     meters
 }
 
+/// The `cedar_ember` block: grants of limit resets, each with how many are left
+/// and when it ends. Absent or `eligible: false` means the account has none to show.
+pub(crate) fn parse_resets(v: &Value, now: DateTime<Utc>) -> Option<LimitResets> {
+    let block = &v["cedar_ember"];
+    if block["eligible"].as_bool() != Some(true) {
+        return None;
+    }
+    let items = block["grants"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|g| g["paused"].as_bool() != Some(true))
+        .filter_map(|g| {
+            let expires_at = timestamp(&g["ends_at"]);
+            if expires_at.is_some_and(|e| e <= now) {
+                return None;
+            }
+            Some(LimitReset {
+                label: g["label"].as_str().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned),
+                count: num(&g["resets_left"]).filter(|n| *n > 0.0)? as u32,
+                expires_at,
+            })
+        })
+        .collect();
+    Some(LimitResets::new(items))
+}
+
 fn humanize(s: &str) -> String {
     let s = s.replace('_', " ");
     let mut c = s.chars();
@@ -218,6 +247,29 @@ mod tests {
         assert_eq!(m[2].label, "Weekly · Opus");
         assert_eq!(m[1].remaining, Some(49.5));
         assert_eq!(m[2].resets_at, None);
+    }
+
+    #[test]
+    fn parses_limit_resets() {
+        let now = DateTime::parse_from_rfc3339("2026-10-15T00:00:00Z").unwrap().with_timezone(&Utc);
+        let v = serde_json::json!({"cedar_ember": {"eligible": true, "grants": [
+            {"id": "b", "label": "Weekly reset", "resets_total": 2, "resets_left": 2, "ends_at": "2026-11-01T00:00:00Z", "clears": ["seven_day"]},
+            {"id": "a", "label": "", "resets_total": 1, "resets_left": 1, "ends_at": "2026-10-20T00:00:00Z"},
+            {"id": "used", "resets_total": 1, "resets_left": 0, "ends_at": "2026-10-30T00:00:00Z"},
+            {"id": "old", "resets_total": 1, "resets_left": 1, "ends_at": "2026-10-01T00:00:00Z"},
+            {"id": "paused", "resets_total": 1, "resets_left": 1, "paused": true}
+        ]}});
+        let r = parse_resets(&v, now).unwrap();
+        assert_eq!(r.available, 3);
+        assert_eq!(r.items.len(), 2);
+        assert_eq!(r.items[0].label, None);
+        assert_eq!(r.items[1].label.as_deref(), Some("Weekly reset"));
+        assert_eq!(r.items[1].count, 2);
+
+        let none = serde_json::json!({"cedar_ember": {"eligible": true, "grants": []}});
+        assert_eq!(parse_resets(&none, now).unwrap().available, 0);
+        assert_eq!(parse_resets(&serde_json::json!({"cedar_ember": {"eligible": false}}), now), None);
+        assert_eq!(parse_resets(&serde_json::json!({}), now), None);
     }
 
     #[test]

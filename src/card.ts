@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { ProviderKind, Settings, Snapshot } from "./api";
 import { h, icon, logo } from "./dom";
 import { ago, tickTimes } from "./format";
-import { meter } from "./meterview";
+import { meter, resetsRow } from "./meterview";
 import { provider } from "./providers";
 
 interface CardView {
@@ -41,6 +41,7 @@ function render() {
       "div",
       { class: "card-body" },
       ...(usage?.meters ?? []).map(meter),
+      usage?.resets ? resetsRow(usage.resets) : null,
       usage?.notes.length ? h("ul", { class: "notes" }, ...usage.notes.map((n) => h("li", null, n))) : null,
     );
   }

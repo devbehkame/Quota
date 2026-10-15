@@ -12,7 +12,7 @@ use std::time::Duration;
 
 pub use error::UsageError;
 pub use reqwest::Client as HttpClient;
-pub use model::{Account, Meter, ProviderKind, Snapshot, Unit, Usage};
+pub use model::{Account, LimitReset, LimitResets, Meter, ProviderKind, Snapshot, Unit, Usage};
 
 /// Builds the shared HTTPS client. TLS only, short timeouts, no redirects to other hosts.
 pub fn http_client() -> reqwest::Client {

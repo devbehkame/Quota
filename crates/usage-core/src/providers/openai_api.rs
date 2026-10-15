@@ -63,7 +63,7 @@ pub(crate) fn spend_usage(month: f64, today: f64, budget: Option<f64>, now: Date
     if budget.is_none() {
         notes.push("Set a monthly budget on this account to see how much is left.".into());
     }
-    Usage { plan: Some("API".into()), meters: vec![meter], notes, signed_in_as: None }
+    Usage { plan: Some("API".into()), meters: vec![meter], notes, signed_in_as: None, resets: None }
 }
 
 #[cfg(test)]

@@ -154,6 +154,35 @@ pub struct Usage {
     pub notes: Vec<String>,
     /// The signed-in account (email or username), when the sign-in says.
     pub signed_in_as: Option<String>,
+    /// Banked limit resets (Claude and ChatGPT plans), when the service reports them.
+    pub resets: Option<LimitResets>,
+}
+
+/// One-off credits that restore a usage limit early, as Claude and ChatGPT grant them.
+#[derive(Serialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitResets {
+    /// How many can be used now.
+    pub available: u32,
+    /// The usable ones, soonest expiry first. Empty when only the count is known.
+    pub items: Vec<LimitReset>,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitReset {
+    /// What it restores, e.g. "Full reset (Weekly + 5 hr)", when the service says.
+    pub label: Option<String>,
+    pub count: u32,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+impl LimitResets {
+    pub fn new(mut items: Vec<LimitReset>) -> Self {
+        items.retain(|i| i.count > 0);
+        items.sort_by_key(|i| (i.expires_at.is_none(), i.expires_at));
+        LimitResets { available: items.iter().map(|i| i.count).sum(), items }
+    }
 }
 
 /// The result of one refresh, as sent to the UI.

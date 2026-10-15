@@ -46,6 +46,13 @@ export function resetLabel(iso: string): string {
   return sameDay ? time : `${t.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, ${time}`;
 }
 
+/** A full date and time, e.g. "Fri, Oct 24, 3:00 PM". */
+export function dateLabel(iso: string): string {
+  const t = new Date(iso);
+  const time = t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${t.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, ${time}`;
+}
+
 /** Remaining share of the limit, 0–100, if the meter has a limit. */
 export function leftPct(m: Meter): number | null {
   return m.percentUsed === null ? null : Math.max(0, 100 - m.percentUsed);
