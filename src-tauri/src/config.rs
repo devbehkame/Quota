@@ -40,6 +40,8 @@ pub struct WidgetSettings {
     pub enabled: bool,
     /// The accounts (and gauges) to show, in order. Any number up to MAX_WIDGET_SLOTS.
     pub slots: Vec<WidgetSlot>,
+    /// A second, thinner bar under each slot for its weekly limit. Off by default.
+    pub weekly_bar: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-import type { ProviderKind, Snapshot } from "./api";
+import type { Meter, ProviderKind, Snapshot } from "./api";
 import { h, logo } from "./dom";
 import { compact, leftPct, level, pickMeter, resetLabel, until } from "./format";
 import { provider } from "./providers";
@@ -18,6 +18,7 @@ interface WidgetView {
   items: WidgetItem[];
   snapshots: Snapshot[];
   lightTaskbar: boolean;
+  weeklyBar: boolean;
 }
 
 const root = document.getElementById("widget")!;
@@ -31,19 +32,41 @@ interface Look {
   cls: string;
   tip: string;
   fill: number | null;
+  /** The weekly bar: how much of the week is left and its colour; null hides it. */
+  week: { fill: number; cls: string } | null;
+}
+
+/**
+ * The weekly limit to show under a slot: the tightest "Weekly…" gauge. None when
+ * the slot already shows a weekly gauge, or the account has no weekly limit.
+ */
+function weeklyMeter(meters: Meter[], shown: Meter): Meter | null {
+  if (shown.label.startsWith("Weekly")) return null;
+  let best: Meter | null = null;
+  for (const m of meters) {
+    if (!m.label.startsWith("Weekly") || leftPct(m) === null) continue;
+    if (!best || leftPct(m)! < leftPct(best)!) best = m;
+  }
+  return best;
 }
 
 function look(it: WidgetItem): Look {
   const snap = snaps.get(it.accountId);
   const m = snap?.usage ? pickMeter(snap.usage.meters, it.meter) : null;
-  if (snap?.error && !snap.usage) return { text: "!", cls: "lvl-danger", tip: `${it.label}: ${snap.error}`, fill: null };
-  if (!m) return { text: "…", cls: "lvl-muted", tip: `${it.label}: loading…`, fill: null };
+  if (snap?.error && !snap.usage) return { text: "!", cls: "lvl-danger", tip: `${it.label}: ${snap.error}`, fill: null, week: null };
+  if (!m) return { text: "…", cls: "lvl-muted", tip: `${it.label}: loading…`, fill: null, week: null };
   const text = compact(m);
   const lvl = level(m);
   let tip = `${it.label} · ${m.label}: ${text} left`;
   if (m.resetsAt) tip += ` · resets ${until(m.resetsAt)} (${resetLabel(m.resetsAt)})`;
   const fill = leftPct(m);
-  return { text, cls: lvl === "neutral" ? "" : `lvl-${lvl}`, tip, fill: fill === null ? null : Math.round(fill) };
+  let week: Look["week"] = null;
+  const w = view?.weeklyBar && snap?.usage ? weeklyMeter(snap.usage.meters, m) : null;
+  if (w) {
+    week = { fill: Math.round(leftPct(w)!), cls: `wk-${level(w)}` };
+    tip += ` · ${w.label}: ${compact(w)} left`;
+  }
+  return { text, cls: lvl === "neutral" ? "" : `lvl-${lvl}`, tip, fill: fill === null ? null : Math.round(fill), week };
 }
 
 /** The elements of one slot, kept so updates change text and colour in place. */
@@ -52,6 +75,8 @@ interface SlotEls {
   num: HTMLElement;
   mini: HTMLElement;
   bar: HTMLElement;
+  week: HTMLElement;
+  weekBar: HTMLElement;
 }
 
 function slot(it: WidgetItem): SlotEls {
@@ -59,17 +84,19 @@ function slot(it: WidgetItem): SlotEls {
   const num = h("span", { class: "num" });
   const bar = h("span");
   const mini = h("span", { class: "mini" }, bar);
+  const weekBar = h("span");
+  const week = h("span", { class: "mini week" }, weekBar);
   const el = h(
     "div",
     { class: "item" },
     h("span", { class: "icon", style: { "--accent": p.color } }, logo(it.kind, 13)),
-    h("span", { class: "value" }, num, mini),
+    h("span", { class: "value" }, num, mini, week),
   );
   // Hovering shows the full details card above this item.
   el.addEventListener("mouseenter", () => {
     void invoke("widget_hover", { accountId: it.accountId, offsetX: el.getBoundingClientRect().left });
   });
-  return { el, num, mini, bar };
+  return { el, num, mini, bar, week, weekBar };
 }
 
 function paint(s: SlotEls, l: Look) {
@@ -79,6 +106,9 @@ function paint(s: SlotEls, l: Look) {
   // The bar keeps its space when empty so the widget never changes height.
   s.mini.style.visibility = l.fill === null ? "hidden" : "";
   s.bar.style.width = `${l.fill ?? 0}%`;
+  s.week.className = `mini week ${l.week?.cls ?? ""}`.trim();
+  s.week.style.visibility = l.week ? "" : "hidden";
+  s.weekBar.style.width = `${l.week?.fill ?? 0}%`;
 }
 
 let slots: SlotEls[] = [];
@@ -88,6 +118,8 @@ let looksKey = "";
 function render() {
   if (!view) return;
   document.documentElement.classList.toggle("light", view.lightTaskbar);
+  // With the weekly bar on, every slot keeps room for it so they line up.
+  root.classList.toggle("weekly", view.weeklyBar);
 
   // Rebuild the elements only when the chosen slots change; refreshes just repaint.
   const shape = JSON.stringify(view.items.map((i) => [i.accountId, i.kind]));

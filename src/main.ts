@@ -1179,6 +1179,14 @@ function widgetSettings(s: Settings, save: () => Promise<void>): HTMLElement {
       ),
       slotRows,
       settingRow(
+        "Weekly bar",
+        "A second, thinner bar under each account for its weekly limit, coloured yellow or red when it runs low.",
+        toggle(s.widget.weeklyBar ?? false, (v) => {
+          s.widget = { ...s.widget, weeklyBar: v };
+          void save();
+        }),
+      ),
+      settingRow(
         "Position",
         "Put the widget back next to the clock after moving it.",
         h(

@@ -82,6 +82,8 @@ export interface WidgetSlot {
 export interface WidgetSettings {
   enabled: boolean;
   slots: WidgetSlot[];
+  /** A second, thinner bar under each slot for its weekly limit. */
+  weeklyBar: boolean;
 }
 
 export interface AppView {

@@ -155,6 +155,8 @@ pub struct WidgetView {
     snapshots: Vec<Snapshot>,
     /// Whether the Windows taskbar uses the light theme (for text colour).
     light_taskbar: bool,
+    /// Show the weekly bar under each slot.
+    weekly_bar: bool,
 }
 
 /// What the widget should show: exactly the slots chosen in Settings.
@@ -180,7 +182,8 @@ pub fn widget_state(app: AppHandle) -> WidgetView {
         let snaps = state.snapshots.lock().unwrap();
         items.iter().filter_map(|i| snaps.get(&i.account_id).cloned()).collect()
     };
-    WidgetView { items, snapshots, light_taskbar: light_taskbar() }
+    let weekly_bar = state.config.lock().unwrap().settings.widget.weekly_bar;
+    WidgetView { items, snapshots, light_taskbar: light_taskbar(), weekly_bar }
 }
 
 #[tauri::command]

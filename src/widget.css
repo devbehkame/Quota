@@ -96,6 +96,35 @@ body {
   background: var(--lvl, var(--text));
 }
 
+/* The optional weekly bar under the session bar; hidden unless turned on. */
+.mini.week {
+  display: none;
+}
+
+.weekly .mini.week {
+  display: block;
+}
+
+.weekly .value {
+  gap: 2px;
+}
+
+.mini.week > span {
+  background: var(--wk, var(--muted));
+}
+
+.wk-good {
+  --wk: var(--good);
+}
+
+.wk-warn {
+  --wk: var(--warn);
+}
+
+.wk-danger {
+  --wk: var(--danger);
+}
+
 .lvl-good {
   --lvl: var(--good);
 }
