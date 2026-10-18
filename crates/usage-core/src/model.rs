@@ -182,11 +182,15 @@ pub struct TokenUsage {
 pub struct WeeklyShare {
     /// The weekly limit used so far, all devices together.
     pub used: f64,
-    /// The part of `used` that rose while this PC was busy.
+    /// This PC's part of `used`.
     pub this_pc: f64,
-    /// Usage Quota couldn't place: from before it was watching this week, or
-    /// across a long gap between refreshes (the PC asleep, Quota closed).
+    /// Other devices, the website and the phone apps.
+    pub other: f64,
+    /// Usage Quota couldn't place yet (from before it was watching, or a long
+    /// gap between refreshes) and can't estimate until it has seen this PC work.
     pub unsplit: f64,
+    /// Part of `this_pc` is estimated from the tokens logged while unwatched.
+    pub estimated: bool,
     pub tracked_since: DateTime<Utc>,
 }
 

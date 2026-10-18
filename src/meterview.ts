@@ -196,17 +196,24 @@ export function tokensView(t: TokenUsage, source: string): HTMLElement {
 
 /** This PC's estimated share of the weekly limit, next to other devices. */
 function shareView(s: WeeklyShare): HTMLElement {
-  const other = Math.max(0, s.used - s.thisPc - s.unsplit);
   const p = (v: number) => (v > 0 && v < 1 ? "<1%" : `${Math.round(v)}%`);
   const parts = [
     { key: "pc", label: "This PC", value: s.thisPc },
-    { key: "other", label: "Other devices", value: other },
-    { key: "unsplit", label: "Not split", value: s.unsplit },
+    { key: "other", label: "Other devices", value: s.other },
+    { key: "unsplit", label: "Not split yet", value: s.unsplit },
   ].filter((x) => x.key !== "unsplit" || x.value > 0);
-  const tip =
-    "Estimated: when your weekly usage went up while this PC was being used, that counts as this PC; " +
-    "when it went up while this PC was idle, it was another device or the web/app. " +
-    `"Not split" is usage from before Quota was watching (since ${dateLabel(s.trackedSince)}) or from a long gap between checks.`;
+  const tip = [
+    "Estimated. Your weekly usage that went up while this PC was in use (within half an hour) counts as this PC; " +
+      "what went up while it was idle was another device, the website or the phone app.",
+    s.estimated
+      ? `Usage from before Quota started watching (${dateLabel(s.trackedSince)}) is split by the tokens this PC logged then, at the rate seen since.`
+      : "",
+    s.unsplit > 0
+      ? `"Not split yet" is usage from before Quota started watching (${dateLabel(s.trackedSince)}) or from a long gap between checks. It gets split once Quota has seen this PC at work.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   return h(
     "div",
     { class: "share", title: tip },

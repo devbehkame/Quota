@@ -54,8 +54,7 @@ pub async fn apply(app: &AppHandle, account: &Account, usage: &mut Usage) {
         .flatten();
 
     if let (Some(t), Some((pct, _))) = (track.as_mut(), week) {
-        let count = tokens.as_ref().map_or(0, |k| k.input + k.output + k.cache_read + k.cache_write);
-        t.observe(pct, count, now);
+        t.observe(pct, tokens.as_ref().map_or(0.0, weekly::units), now);
         let mut tracks = weeks.tracks.lock().unwrap();
         tracks.insert(account.id.clone(), t.clone());
         weeks.save(&tracks);

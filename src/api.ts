@@ -59,7 +59,10 @@ export interface TokenUsage {
 export interface WeeklyShare {
   used: number;
   thisPc: number;
+  other: number;
   unsplit: number;
+  /** Part of thisPc is estimated from tokens logged while Quota wasn't watching. */
+  estimated: boolean;
   trackedSince: string;
 }
 
