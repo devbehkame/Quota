@@ -41,18 +41,20 @@ export interface Usage {
   signedInAs: string | null;
   /** Banked limit resets (Claude and ChatGPT plans), when the service reports them. */
   resets: LimitResets | null;
-  /** Tokens used this week, from the local Claude Code / Codex logs. */
-  tokens: TokenUsage | null;
+  /** Tokens used this session and this week, from the local Claude Code / Codex logs. */
+  tokens: TokenUsage[];
 }
 
 export interface TokenUsage {
-  /** Start of the weekly window the counts cover. */
+  /** Which limit window: the 5-hour session or the week. */
+  period: "session" | "week";
+  /** Start of the window the counts cover. */
   since: string;
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite: number;
-  /** This PC's share of the weekly limit (estimated), in percentage points. */
+  /** This PC's share of the window's limit (estimated), in percentage points. */
   share: WeeklyShare | null;
 }
 

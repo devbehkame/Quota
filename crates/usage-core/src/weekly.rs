@@ -1,4 +1,5 @@
-//! Where "this week" starts, and how much of the weekly limit this PC used.
+//! Where a limit window (the week, or the 5-hour session) starts, and how much
+//! of that limit this PC used. Written for the week; the session works the same.
 //!
 //! The week starts 7 days before the weekly limit resets, unless the weekly
 //! usage drops while the reset time stays put: then a banked limit reset was
@@ -58,11 +59,22 @@ pub fn units(t: &TokenUsage) -> f64 {
     t.input as f64 + t.cache_write as f64 * 1.25 + t.cache_read as f64 * 0.1 + t.output as f64 * 5.0
 }
 
-/// Decides the week for this refresh. Call before counting tokens (from
-/// `window_start`), then record the count with [`Track::observe`].
-pub fn begin(prev: Option<&Track>, pct: f64, resets_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> Track {
+/// How long each window lasts.
+pub const WEEK: Duration = Duration::days(7);
+pub const SESSION: Duration = Duration::hours(5);
+
+/// Decides the window for this refresh. Call before counting tokens (from
+/// `window_start`), then record the count with [`Track::observe`]. `length` is
+/// [`WEEK`] or [`SESSION`].
+pub fn begin(
+    prev: Option<&Track>,
+    pct: f64,
+    resets_at: Option<DateTime<Utc>>,
+    length: Duration,
+    now: DateTime<Utc>,
+) -> Track {
     let resets_at = resets_at.filter(|r| *r > now);
-    let natural = resets_at.map(|r| r - Duration::days(7));
+    let natural = resets_at.map(|r| r - length);
     // A new week: if Quota was looking right before it began, it's watched from
     // the start; otherwise what's already used is unsplit.
     let new_week = |start: DateTime<Utc>, last_seen: Option<DateTime<Utc>>| Track {
@@ -80,7 +92,7 @@ pub fn begin(prev: Option<&Track>, pct: f64, resets_at: Option<DateTime<Utc>>, n
     };
 
     let Some(prev) = prev else {
-        return new_week(natural.unwrap_or(now - Duration::days(7)), None);
+        return new_week(natural.unwrap_or(now - length), None);
     };
     let moved = match (prev.resets_at, resets_at) {
         (Some(a), Some(b)) => (a - b).num_seconds().abs() > SAME_WINDOW,
@@ -90,7 +102,7 @@ pub fn begin(prev: Option<&Track>, pct: f64, resets_at: Option<DateTime<Utc>>, n
         (None, None) => false,
     };
     if moved {
-        let start = natural.or(prev.resets_at.filter(|r| *r <= now)).unwrap_or(now - Duration::days(7));
+        let start = natural.or(prev.resets_at.filter(|r| *r <= now)).unwrap_or(now - length);
         return new_week(start, (start >= prev.last_seen).then_some(prev.last_seen));
     }
     if pct + DROP < prev.last_pct {
@@ -165,7 +177,7 @@ mod tests {
     const DAY: i64 = 24 * 60;
 
     fn step(prev: Option<&Track>, pct: f64, reset: i64, work: f64, now: i64) -> Track {
-        let mut t = begin(prev, pct, Some(at(reset)), at(now));
+        let mut t = begin(prev, pct, Some(at(reset)), WEEK, at(now));
         t.observe(pct, work, at(now));
         t
     }
@@ -246,6 +258,18 @@ mod tests {
         let t = step(Some(&t), 12.0, 100 + 7 * DAY, 3_000.0, 2 * DAY);
         assert_eq!(t.window_start, at(100));
         assert_eq!(parts(&t), (12.0, 0.0, 0.0, 12.0));
+    }
+
+    #[test]
+    fn a_session_window_is_five_hours() {
+        let mut t = begin(None, 10.0, Some(at(120)), SESSION, at(115));
+        t.observe(10.0, 0.0, at(115));
+        assert_eq!(t.window_start, at(120 - 300));
+        // The session resets: a new one, watched from its start.
+        let mut t = begin(Some(&t), 3.0, Some(at(120 + 300)), SESSION, at(125));
+        t.observe(3.0, 200.0, at(125));
+        assert_eq!(t.window_start, at(120));
+        assert_eq!(parts(&t), (3.0, 3.0, 0.0, 0.0));
     }
 
     #[test]

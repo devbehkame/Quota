@@ -32,7 +32,7 @@ pub(crate) fn parse(v: &Value) -> Result<Usage, UsageError> {
     if v["is_available"].as_bool() == Some(false) {
         notes.push("Balance is too low for API calls. Top up to keep using DeepSeek.".into());
     }
-    Ok(Usage { plan: Some("Prepaid".into()), meters, notes, signed_in_as: None, resets: None, tokens: None })
+    Ok(Usage { plan: Some("Prepaid".into()), meters, notes, signed_in_as: None, resets: None, tokens: vec![] })
 }
 
 #[cfg(test)]

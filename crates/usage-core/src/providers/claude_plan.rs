@@ -126,7 +126,7 @@ pub async fn fetch(client: &reqwest::Client, account: &Account, manual_token: Op
         return Err(UsageError::Parse("no usage windows in the response".into()));
     }
     let resets = parse_resets(&body, Utc::now());
-    Ok(Usage { plan, meters, notes: vec![], signed_in_as: email, resets, tokens: None })
+    Ok(Usage { plan, meters, notes: vec![], signed_in_as: email, resets, tokens: vec![] })
 }
 
 /// Understands both the newer `limits` array and the older flat `five_hour` / `seven_day` shape.

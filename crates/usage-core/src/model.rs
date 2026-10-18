@@ -156,14 +156,26 @@ pub struct Usage {
     pub signed_in_as: Option<String>,
     /// Banked limit resets (Claude and ChatGPT plans), when the service reports them.
     pub resets: Option<LimitResets>,
-    /// Tokens used this week, from the local Claude Code / Codex logs.
-    pub tokens: Option<TokenUsage>,
+    /// Tokens used this week and this session, from the local Claude Code /
+    /// Codex logs (filled in by the app after each refresh).
+    pub tokens: Vec<TokenUsage>,
 }
 
-/// Tokens counted from local logs since `since` (the start of the weekly window).
+/// Which limit window a [`TokenUsage`] covers.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum Period {
+    /// The 5-hour session limit.
+    Session,
+    #[default]
+    Week,
+}
+
+/// Tokens counted from local logs since `since` (the start of the limit window).
 #[derive(Serialize, Clone, Debug, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsage {
+    pub period: Period,
     pub since: DateTime<Utc>,
     /// Input that wasn't served from the prompt cache.
     pub input: u64,
@@ -172,15 +184,15 @@ pub struct TokenUsage {
     pub cache_read: u64,
     /// Input written to the prompt cache (Claude only).
     pub cache_write: u64,
-    /// This PC's share of the weekly limit, estimated by the app (see `weekly` there).
+    /// This PC's share of the window's limit, estimated by the app.
     pub share: Option<WeeklyShare>,
 }
 
-/// How much of the weekly limit this PC used, in percentage points of the limit.
+/// How much of a limit (weekly or session) this PC used, in percentage points.
 #[derive(Serialize, Clone, Debug, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WeeklyShare {
-    /// The weekly limit used so far, all devices together.
+    /// The limit used so far, all devices together.
     pub used: f64,
     /// This PC's part of `used`.
     pub this_pc: f64,

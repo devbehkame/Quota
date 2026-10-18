@@ -144,6 +144,8 @@ export function resetsRow(r: LimitResets, inline = false): HTMLElement {
  * input / output / cache, and each part's share of the whole.
  */
 export function tokensView(t: TokenUsage, source: string): HTMLElement {
+  const name = t.period === "session" ? "session" : "week";
+  const limit = t.period === "session" ? "5-hour session" : "weekly";
   const cache = t.cacheRead + t.cacheWrite;
   const total = t.input + t.output + cache;
   const parts = [
@@ -163,12 +165,12 @@ export function tokensView(t: TokenUsage, source: string): HTMLElement {
     "div",
     {
       class: "tokens",
-      title: `Since ${dateLabel(t.since)}, when this week's limit started (or was last reset). Counted from ${source} on this PC.`,
+      title: `Since ${dateLabel(t.since)}, when this ${limit} limit started (or was last reset). Counted from ${source} on this PC.`,
     },
     h(
       "div",
       { class: "meter-top" },
-      h("span", { class: "meter-label" }, "Tokens this week"),
+      h("span", { class: "meter-label" }, `Tokens this ${name}`),
       h("span", { class: "tokens-total" }, `${tokens(total)} total`),
     ),
     h(
@@ -190,12 +192,12 @@ export function tokensView(t: TokenUsage, source: string): HTMLElement {
         ),
       ),
     ),
-    t.share ? shareView(t.share) : null,
+    t.share ? shareView(t.share, name) : null,
   );
 }
 
-/** This PC's estimated share of the weekly limit, next to other devices. */
-function shareView(s: WeeklyShare): HTMLElement {
+/** This PC's estimated share of a limit (session or week), next to other devices. */
+function shareView(s: WeeklyShare, name: string): HTMLElement {
   const p = (v: number) => (v > 0 && v < 1 ? "<1%" : `${Math.round(v)}%`);
   const parts = [
     { key: "pc", label: "This PC", value: s.thisPc },
@@ -203,7 +205,7 @@ function shareView(s: WeeklyShare): HTMLElement {
     { key: "unsplit", label: "Not split yet", value: s.unsplit },
   ].filter((x) => x.key !== "unsplit" || x.value > 0);
   const tip = [
-    "Estimated. Your weekly usage that went up while this PC was in use (within half an hour) counts as this PC; " +
+    `Estimated. Your ${name}'s usage that went up while this PC was in use (within half an hour) counts as this PC; ` +
       "what went up while it was idle was another device, the website or the phone app.",
     s.estimated
       ? `Usage from before Quota started watching (${dateLabel(s.trackedSince)}) is split by the tokens this PC logged then, at the rate seen since.`
@@ -220,7 +222,7 @@ function shareView(s: WeeklyShare): HTMLElement {
     h(
       "div",
       { class: "meter-top" },
-      h("span", { class: "meter-label" }, "This PC's share of the week"),
+      h("span", { class: "meter-label" }, `This PC's share of the ${name}`),
       h("span", { class: "tokens-total" }, `≈ ${p(s.thisPc)} of ${p(s.used)} used`),
     ),
     h(

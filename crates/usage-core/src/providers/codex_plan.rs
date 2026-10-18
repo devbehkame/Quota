@@ -356,7 +356,7 @@ pub(crate) fn to_usage(found: Found, now: DateTime<Utc>, note: Option<String>) -
         .enumerate()
         .map(|(i, w)| window_meter(window_label(w.window_minutes, i), w, now))
         .collect();
-    Usage { plan: found.plan, meters, notes: note.into_iter().collect(), signed_in_as: None, resets: None, tokens: None }
+    Usage { plan: found.plan, meters, notes: note.into_iter().collect(), signed_in_as: None, resets: None, tokens: vec![] }
 }
 
 #[cfg(test)]

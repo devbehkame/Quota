@@ -1,8 +1,8 @@
 //! Tokens used this week, counted from the logs Claude Code and Codex keep on
 //! this PC (the same numbers their own usage reports add up). Only read; nothing
 //! is sent anywhere. Only files changed since the window started are opened.
-//! The app decides where the week starts (it notices early resets) and calls
-//! [`for_account`] after each refresh.
+//! The app decides where each window (week, 5-hour session) starts, since it
+//! notices early resets, and calls [`for_account`] after each refresh.
 
 use std::collections::HashSet;
 use std::fs::File;
@@ -25,15 +25,29 @@ pub fn weekly_meter(meters: &[Meter]) -> Option<&Meter> {
         .or_else(|| meters.iter().find(|m| m.label.starts_with("Weekly")))
 }
 
-/// Tokens this account's local tool logged since `since`. Blocking: the logs can
-/// be large, so call it off the async threads.
-pub fn for_account(account: &Account, since: DateTime<Utc>) -> Option<TokenUsage> {
+/// The 5-hour session limit.
+pub fn session_meter(meters: &[Meter]) -> Option<&Meter> {
+    meters.iter().find(|m| m.label.starts_with("Session"))
+}
+
+/// Tokens this account's local tool logged since each of `sinces`, in the same
+/// order; `None` when it keeps no logs on this PC. Blocking: the logs can be
+/// large, so call it off the async threads.
+pub fn for_account(account: &Account, sinces: &[DateTime<Utc>]) -> Option<Vec<TokenUsage>> {
     let over = account.data_path.as_deref();
     match account.kind {
-        ProviderKind::ClaudePlan => claude(&super::config_dir(over, "CLAUDE_CONFIG_DIR", ".claude")?, since),
-        ProviderKind::CodexPlan => codex(&super::codex_plan::sessions_dir(over)?, since),
+        ProviderKind::ClaudePlan => Some(claude(&super::config_dir(over, "CLAUDE_CONFIG_DIR", ".claude")?, sinces)),
+        ProviderKind::CodexPlan => Some(codex(&super::codex_plan::sessions_dir(over)?, sinces)),
         _ => None,
     }
+}
+
+fn empty(sinces: &[DateTime<Utc>]) -> Vec<TokenUsage> {
+    sinces.iter().map(|&since| TokenUsage { since, ..Default::default() }).collect()
+}
+
+fn earliest(sinces: &[DateTime<Utc>]) -> DateTime<Utc> {
+    sinces.iter().copied().min().unwrap_or_else(Utc::now)
 }
 
 /// `.jsonl` files under `dir` changed at or after `since`.
@@ -66,27 +80,25 @@ fn n(v: &Value) -> u64 {
     v.as_u64().unwrap_or(0)
 }
 
-fn some_if_used(t: TokenUsage) -> Option<TokenUsage> {
-    (t.input + t.output + t.cache_read + t.cache_write > 0).then_some(t)
-}
-
 /// Claude Code: `projects/**/<session>.jsonl`, one line per reply with its
 /// `message.usage`. A reply can be written more than once (streaming, resumed
 /// sessions), so each message/request pair is counted once.
-pub fn claude(config_dir: &Path, since: DateTime<Utc>) -> Option<TokenUsage> {
-    let mut t = TokenUsage { since, ..Default::default() };
+pub fn claude(config_dir: &Path, sinces: &[DateTime<Utc>]) -> Vec<TokenUsage> {
+    let mut out = empty(sinces);
     let mut seen = HashSet::new();
-    for path in logs_since(&config_dir.join("projects"), since) {
+    for path in logs_since(&config_dir.join("projects"), earliest(sinces)) {
         for line in lines(&path).filter(|l| l.contains("\"usage\"")) {
-            add_claude_line(&line, since, &mut seen, &mut t);
+            add_claude_line(&line, &mut seen, &mut out);
         }
     }
-    some_if_used(t)
+    out
 }
 
-pub(crate) fn add_claude_line(line: &str, since: DateTime<Utc>, seen: &mut HashSet<String>, t: &mut TokenUsage) {
+/// Adds one log line to every window it falls in.
+pub(crate) fn add_claude_line(line: &str, seen: &mut HashSet<String>, out: &mut [TokenUsage]) {
     let Ok(v) = serde_json::from_str::<Value>(line) else { return };
-    if v["type"].as_str() != Some("assistant") || timestamp(&v["timestamp"]).is_none_or(|ts| ts < since) {
+    let Some(ts) = timestamp(&v["timestamp"]) else { return };
+    if v["type"].as_str() != Some("assistant") || out.iter().all(|t| ts < t.since) {
         return;
     }
     let msg = &v["message"];
@@ -98,27 +110,31 @@ pub(crate) fn add_claude_line(line: &str, since: DateTime<Utc>, seen: &mut HashS
     if key != ":" && !seen.insert(key) {
         return;
     }
-    t.input += n(&u["input_tokens"]);
-    t.output += n(&u["output_tokens"]);
-    t.cache_write += n(&u["cache_creation_input_tokens"]);
-    t.cache_read += n(&u["cache_read_input_tokens"]);
+    for t in out.iter_mut().filter(|t| ts >= t.since) {
+        t.input += n(&u["input_tokens"]);
+        t.output += n(&u["output_tokens"]);
+        t.cache_write += n(&u["cache_creation_input_tokens"]);
+        t.cache_read += n(&u["cache_read_input_tokens"]);
+    }
 }
 
 /// Codex: `sessions/YYYY/MM/DD/rollout-*.jsonl`, whose `token_count` events
 /// carry the session's running total. A session's share of the window is its
 /// last total minus the total it had when the window started.
-pub fn codex(sessions_dir: &Path, since: DateTime<Utc>) -> Option<TokenUsage> {
-    let mut t = TokenUsage { since, ..Default::default() };
-    for path in logs_since(sessions_dir, since) {
-        add_codex_session(lines(&path).filter(|l| l.contains("token_count")), since, &mut t);
+pub fn codex(sessions_dir: &Path, sinces: &[DateTime<Utc>]) -> Vec<TokenUsage> {
+    let mut out = empty(sinces);
+    for path in logs_since(sessions_dir, earliest(sinces)) {
+        add_codex_session(lines(&path).filter(|l| l.contains("token_count")), &mut out);
     }
-    some_if_used(t)
+    out
 }
 
-pub(crate) fn add_codex_session(lines: impl Iterator<Item = String>, since: DateTime<Utc>, t: &mut TokenUsage) {
-    // (input without cached, cached input, output)
-    let mut before = (0, 0, 0);
-    let mut last = None;
+/// Adds one session's growth within each window.
+pub(crate) fn add_codex_session(lines: impl Iterator<Item = String>, out: &mut [TokenUsage]) {
+    // Per window: the running total (input without cached, cached input, output)
+    // just before it began, and the last one inside it.
+    let mut before = vec![(0, 0, 0); out.len()];
+    let mut last = vec![None; out.len()];
     for line in lines {
         let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
         let p = &v["payload"];
@@ -131,15 +147,20 @@ pub(crate) fn add_codex_session(lines: impl Iterator<Item = String>, since: Date
         }
         let cached = n(&total["cached_input_tokens"]);
         let now = (n(&total["input_tokens"]).saturating_sub(cached), cached, n(&total["output_tokens"]));
-        match timestamp(&v["timestamp"]) {
-            Some(ts) if ts < since => before = now,
-            _ => last = Some(now),
+        let ts = timestamp(&v["timestamp"]);
+        for (i, t) in out.iter().enumerate() {
+            match ts {
+                Some(ts) if ts < t.since => before[i] = now,
+                _ => last[i] = Some(now),
+            }
         }
     }
-    if let Some(l) = last {
-        t.input += l.0.saturating_sub(before.0);
-        t.cache_read += l.1.saturating_sub(before.1);
-        t.output += l.2.saturating_sub(before.2);
+    for (i, t) in out.iter_mut().enumerate() {
+        if let Some(l) = last[i] {
+            t.input += l.0.saturating_sub(before[i].0);
+            t.cache_read += l.1.saturating_sub(before[i].1);
+            t.output += l.2.saturating_sub(before[i].2);
+        }
     }
 }
 
@@ -170,7 +191,10 @@ mod tests {
                 r#"{{"type":"assistant","timestamp":"{ts}","requestId":"r-{id}","message":{{"id":"m-{id}","usage":{{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000}}}}}}"#
             )
         };
-        let mut t = TokenUsage::default();
+        let mut out = vec![
+            TokenUsage { since, ..Default::default() },
+            TokenUsage { since: at("2026-10-14T00:00:00Z"), ..Default::default() },
+        ];
         let mut seen = HashSet::new();
         for l in [
             reply("a", "2026-10-13T10:00:00Z"),
@@ -179,9 +203,13 @@ mod tests {
             reply("old", "2026-10-01T10:00:00Z"), // before the window
             r#"{"type":"user","timestamp":"2026-10-13T10:00:00Z","message":{"usage":{"input_tokens":99}}}"#.into(),
         ] {
-            add_claude_line(&l, since, &mut seen, &mut t);
+            add_claude_line(&l, &mut seen, &mut out);
         }
+        let t = &out[0];
         assert_eq!((t.input, t.output, t.cache_write, t.cache_read), (20, 10, 200, 2000));
+        // The later window only has the reply from the 14th.
+        let t = &out[1];
+        assert_eq!((t.input, t.output, t.cache_write, t.cache_read), (10, 5, 100, 1000));
     }
 
     #[test]
@@ -192,14 +220,21 @@ mod tests {
                 r#"{{"timestamp":"{ts}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":{input},"cached_input_tokens":{cached},"output_tokens":{output}}}}}}}}}"#
             )
         };
-        let mut t = TokenUsage::default();
+        let mut out = vec![
+            TokenUsage { since, ..Default::default() },
+            TokenUsage { since: at("2026-10-12T01:30:00Z"), ..Default::default() },
+        ];
         let session = vec![
             ev("2026-10-11T23:00:00Z", 1000, 400, 50), // before the window
             ev("2026-10-12T01:00:00Z", 3000, 1400, 150),
             ev("2026-10-12T01:00:05Z", 3000, 1400, 150), // repeated
             ev("2026-10-12T02:00:00Z", 5000, 2400, 250),
         ];
-        add_codex_session(session.into_iter(), since, &mut t);
+        add_codex_session(session.into_iter(), &mut out);
+        let t = &out[0];
         assert_eq!((t.input, t.cache_read, t.output), (2000, 2000, 200));
+        // From 01:30: 1600→2600 input, 1400→2400 cached, 150→250 output.
+        let t = &out[1];
+        assert_eq!((t.input, t.cache_read, t.output), (1000, 1000, 100));
     }
 }
