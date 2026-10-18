@@ -277,6 +277,21 @@ function summary(t: TokenUsage, withName: boolean): string {
  * "On this PC": the token sections of a card, closed to one summary line until
  * opened, and with a Session | Week switch when the plan has both limits.
  */
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Swaps a tab's content: the new view slides in from the side of the picked tab
+ *  while the height eases from the old view's to the new one's. */
+function swap(body: HTMLElement, view: HTMLElement, dir: number) {
+  body.getAnimations().forEach((a) => a.cancel());
+  const from = body.offsetHeight;
+  body.replaceChildren(view);
+  if (calm()) return;
+  const to = body.offsetHeight;
+  const timing = { duration: 220, easing: "ease" };
+  if (from !== to) body.animate([{ height: `${from}px` }, { height: `${to}px` }], timing);
+  view.animate([{ opacity: 0, transform: `translateX(${dir * 14}px)` }, { opacity: 1, transform: "none" }], timing);
+}
+
 export function tokensTabs(cardId: string, list: TokenUsage[], source: string): HTMLElement | null {
   if (!list.length) return null;
   const many = list.length > 1;
@@ -296,18 +311,28 @@ export function tokensTabs(cardId: string, list: TokenUsage[], source: string): 
         "aria-selected": String(t === current),
         onclick: (e: Event) => {
           e.stopPropagation();
+          if (t === current) return;
+          const dir = Math.sign(list.indexOf(t) - list.indexOf(current));
           current = t;
           picked.set(cardId, t.period);
           remember();
           tabs.forEach((b, i) => b.setAttribute("aria-selected", String(list[i] === t)));
-          body.replaceChildren(tokensView(t, source));
+          tabList?.style.setProperty("--i", String(list.indexOf(t)));
+          swap(body, tokensView(t, source), dir);
           sum.textContent = summary(t, many);
         },
       },
       t.period === "session" ? "Session" : "Week",
     ),
   );
-  const tabList = many ? h("div", { class: "seg-tabs", role: "tablist", "aria-label": "Limit window" }, ...tabs) : null;
+  const tabList = many
+    ? h(
+        "div",
+        { class: "seg-tabs", role: "tablist", "aria-label": "Limit window", style: { "--i": String(list.indexOf(current)), "--n": String(list.length) } },
+        h("span", { class: "seg-thumb", "aria-hidden": "true" }),
+        ...tabs,
+      )
+    : null;
 
   const panel = h("div", { class: "tokens-panel" });
   const toggle = h(

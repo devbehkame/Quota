@@ -646,7 +646,8 @@ body.dragging * {
 
 @media (prefers-reduced-motion: reduce) {
   .tokens-drawer,
-  .tokens-toggle svg {
+  .tokens-toggle svg,
+  .seg-thumb {
     transition: none;
   }
 
@@ -720,8 +721,12 @@ body.dragging * {
   content: "· ";
 }
 
+/* Equal-width tabs, so the highlight can slide by whole steps (--i of --n). */
 .seg-tabs {
-  display: inline-flex;
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   padding: 2px;
   gap: 2px;
   border-radius: var(--radius-sm);
@@ -729,7 +734,21 @@ body.dragging * {
   border: 1px solid var(--border);
 }
 
+.seg-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px - (var(--n) - 1) * 2px) / var(--n));
+  transform: translateX(calc(var(--i) * (100% + 2px)));
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--border);
+  transition: transform 0.22s ease;
+}
+
 .seg-tab {
+  position: relative;
   border: 0;
   background: none;
   padding: 3px 10px;
@@ -745,9 +764,7 @@ body.dragging * {
 }
 
 .seg-tab[aria-selected="true"] {
-  background: var(--surface);
   color: var(--text);
-  box-shadow: var(--shadow-sm), 0 0 0 1px var(--border);
 }
 
 .seg-tab:focus-visible {
