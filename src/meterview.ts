@@ -1,5 +1,5 @@
 import type { LimitResets, Meter, TokenUsage, WeeklyShare } from "./api";
-import { h } from "./dom";
+import { h, icon } from "./dom";
 import { dateLabel, headline, leftPct, level, money, pct, resetLabel, tokens, until } from "./format";
 
 /** One gauge as drawn on an account card (main window and widget hover card). */
@@ -241,27 +241,49 @@ function shareView(s: WeeklyShare, name: string): HTMLElement {
   );
 }
 
-/** The tab picked in each card (session or week), kept across refreshes and restarts. */
+/** Per card: which tab is picked, and whether the section is open. Kept across refreshes and restarts. */
 const picked = new Map<string, TokenUsage["period"]>();
+const opened = new Set<string>();
 const PICKED_KEY = "quota.tokensTab";
+const OPEN_KEY = "quota.tokensOpen";
 try {
   for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem(PICKED_KEY) ?? "{}"))) {
     if (v === "session" || v === "week") picked.set(k, v);
   }
+  for (const k of JSON.parse(localStorage.getItem(OPEN_KEY) ?? "[]")) if (typeof k === "string") opened.add(k);
 } catch {
   /* nothing saved yet */
 }
 
+function remember() {
+  try {
+    localStorage.setItem(PICKED_KEY, JSON.stringify(Object.fromEntries(picked)));
+    localStorage.setItem(OPEN_KEY, JSON.stringify([...opened]));
+  } catch {
+    /* not saved; fine */
+  }
+}
+
+/** One line for the closed section: "Week 293M tokens · this PC 36%". */
+function summary(t: TokenUsage, withName: boolean): string {
+  const total = t.input + t.output + t.cacheRead + t.cacheWrite;
+  const name = withName ? `${t.period === "session" ? "Session" : "Week"} ` : "";
+  const parts = [`${name}${tokens(total)} tokens`];
+  if (t.share) parts.push(`this PC ${Math.round(t.share.thisPc)}%`);
+  return parts.join(" · ");
+}
+
 /**
- * The token sections of a card, one at a time behind a Session | Week switch.
- * With only one window to show, there's no switch.
+ * "On this PC": the token sections of a card, closed to one summary line until
+ * opened, and with a Session | Week switch when the plan has both limits.
  */
 export function tokensTabs(cardId: string, list: TokenUsage[], source: string): HTMLElement | null {
   if (!list.length) return null;
-  if (list.length === 1) return h("div", { class: "tokens-panel" }, tokensView(list[0]!, source));
-  const label = (p: TokenUsage["period"]) => (p === "session" ? "Session" : "Week");
+  const many = list.length > 1;
   let current = list.find((t) => t.period === picked.get(cardId)) ?? list[0]!;
-  const body = h("div", { class: "tokens-tab-body", role: "tabpanel" }, tokensView(current, source));
+
+  const body = h("div", { class: "tokens-tab-body", role: many ? "tabpanel" : null }, tokensView(current, source));
+  const sum = h("span", { class: "tokens-summary" }, summary(current, many));
   const tabs = list.map((t) =>
     h(
       "button",
@@ -274,27 +296,41 @@ export function tokensTabs(cardId: string, list: TokenUsage[], source: string): 
           e.stopPropagation();
           current = t;
           picked.set(cardId, t.period);
-          try {
-            localStorage.setItem(PICKED_KEY, JSON.stringify(Object.fromEntries(picked)));
-          } catch {
-            /* not saved; fine */
-          }
+          remember();
           tabs.forEach((b, i) => b.setAttribute("aria-selected", String(list[i] === t)));
           body.replaceChildren(tokensView(t, source));
+          sum.textContent = summary(t, many);
         },
       },
-      label(t.period),
+      t.period === "session" ? "Session" : "Week",
     ),
   );
-  return h(
-    "div",
-    { class: "tokens-panel" },
-    h(
-      "div",
-      { class: "tokens-panel-head" },
-      h("span", { class: "meter-label" }, "On this PC"),
-      h("div", { class: "seg-tabs", role: "tablist", "aria-label": "Limit window" }, ...tabs),
-    ),
-    body,
+  const tabList = many ? h("div", { class: "seg-tabs", role: "tablist", "aria-label": "Limit window" }, ...tabs) : null;
+
+  const panel = h("div", { class: "tokens-panel" });
+  const toggle = h(
+    "button",
+    { class: "tokens-toggle", type: "button" },
+    icon("chevron", 14),
+    h("span", { class: "meter-label" }, "On this PC"),
+    sum,
   );
+  const setOpen = (open: boolean) => {
+    panel.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    body.hidden = !open;
+    if (tabList) tabList.hidden = !open;
+    sum.hidden = open;
+  };
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = !opened.has(cardId);
+    if (open) opened.add(cardId);
+    else opened.delete(cardId);
+    remember();
+    setOpen(open);
+  });
+  panel.append(h("div", { class: "tokens-panel-head" }, toggle, tabList), body);
+  setOpen(opened.has(cardId));
+  return panel;
 }

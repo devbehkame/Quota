@@ -73,6 +73,7 @@ const ICONS: Record<string, string> = {
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   arrowLeft: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+  chevron: '<path d="m6 9 6 6 6-6"/>',
   gauge: '<path d="M12 14l4-4"/><path d="M3.3 17a10 10 0 1 1 17.4 0"/>',
 };
 
