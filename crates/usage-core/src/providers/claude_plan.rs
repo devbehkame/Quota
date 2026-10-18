@@ -126,14 +126,7 @@ pub async fn fetch(client: &reqwest::Client, account: &Account, manual_token: Op
         return Err(UsageError::Parse("no usage windows in the response".into()));
     }
     let resets = parse_resets(&body, Utc::now());
-    let tokens = match super::config_dir(account.data_path.as_deref(), "CLAUDE_CONFIG_DIR", ".claude") {
-        Some(dir) => {
-            let since = super::tokens::week_start(&meters, Utc::now());
-            super::tokens::scan(move || super::tokens::claude(&dir, since)).await
-        }
-        None => None,
-    };
-    Ok(Usage { plan, meters, notes: vec![], signed_in_as: email, resets, tokens })
+    Ok(Usage { plan, meters, notes: vec![], signed_in_as: email, resets, tokens: None })
 }
 
 /// Understands both the newer `limits` array and the older flat `five_hour` / `seven_day` shape.

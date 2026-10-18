@@ -9,6 +9,7 @@ mod secrets;
 mod startup;
 mod tray;
 mod updater;
+mod weekly;
 mod widget;
 
 use std::collections::HashMap;
@@ -40,6 +41,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("config.json");
+            app.manage(weekly::Weeks::load(config_path.with_file_name("weekly.json")));
             let cfg = config::load(&config_path);
             app.manage(AppState {
                 client: usage_core::http_client(),

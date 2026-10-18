@@ -1,4 +1,4 @@
-import type { LimitResets, Meter, TokenUsage } from "./api";
+import type { LimitResets, Meter, TokenUsage, WeeklyShare } from "./api";
 import { h } from "./dom";
 import { dateLabel, headline, leftPct, level, money, pct, resetLabel, tokens, until } from "./format";
 
@@ -163,7 +163,7 @@ export function tokensView(t: TokenUsage, source: string): HTMLElement {
     "div",
     {
       class: "tokens",
-      title: `Since ${dateLabel(t.since)}, the start of this weekly window. Counted from ${source} on this PC.`,
+      title: `Since ${dateLabel(t.since)}, when this week's limit started (or was last reset). Counted from ${source} on this PC.`,
     },
     h(
       "div",
@@ -188,6 +188,44 @@ export function tokensView(t: TokenUsage, source: string): HTMLElement {
           h("b", null, tokens(p.value)),
           h("span", { class: "tk-share" }, shareText(p.value)),
         ),
+      ),
+    ),
+    t.share ? shareView(t.share) : null,
+  );
+}
+
+/** This PC's estimated share of the weekly limit, next to other devices. */
+function shareView(s: WeeklyShare): HTMLElement {
+  const other = Math.max(0, s.used - s.thisPc - s.unsplit);
+  const p = (v: number) => (v > 0 && v < 1 ? "<1%" : `${Math.round(v)}%`);
+  const parts = [
+    { key: "pc", label: "This PC", value: s.thisPc },
+    { key: "other", label: "Other devices", value: other },
+    { key: "unsplit", label: "Not split", value: s.unsplit },
+  ].filter((x) => x.key !== "unsplit" || x.value > 0);
+  const tip =
+    "Estimated: when your weekly usage went up while this PC was being used, that counts as this PC; " +
+    "when it went up while this PC was idle, it was another device or the web/app. " +
+    `"Not split" is usage from before Quota was watching (since ${dateLabel(s.trackedSince)}) or from a long gap between checks.`;
+  return h(
+    "div",
+    { class: "share", title: tip },
+    h(
+      "div",
+      { class: "meter-top" },
+      h("span", { class: "meter-label" }, "This PC's share of the week"),
+      h("span", { class: "tokens-total" }, `≈ ${p(s.thisPc)} of ${p(s.used)} used`),
+    ),
+    h(
+      "div",
+      { class: "tokens-bar share-bar", role: "img", "aria-label": parts.map((x) => `${x.label} ${p(x.value)}`).join(", ") },
+      ...parts.filter((x) => x.value > 0).map((x) => h("span", { class: `seg ${x.key}`, style: { width: `${Math.min(100, x.value)}%` } })),
+    ),
+    h(
+      "div",
+      { class: "tokens-legend" },
+      ...parts.map((x) =>
+        h("span", { class: "tk" }, h("i", { class: `dot ${x.key}` }), h("span", { class: "tk-label" }, x.label), h("b", null, p(x.value))),
       ),
     ),
   );

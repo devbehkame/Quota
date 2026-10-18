@@ -71,7 +71,13 @@ pub async fn refresh(app: &AppHandle, id: &str, trigger: Trigger) -> Result<Snap
     let secret = secrets::get(id)?;
     state.pace.lock().unwrap().last_fetch.insert(id.to_string(), now);
     let _ = app.emit("refresh-state", RefreshState { account_id: id, busy: true });
-    let result = usage_core::fetch(&state.client, &account, secret.as_deref().map(|s| s.as_str())).await;
+    let result = match usage_core::fetch(&state.client, &account, secret.as_deref().map(|s| s.as_str())).await {
+        Ok(mut usage) => {
+            crate::weekly::apply(app, &account, &mut usage).await;
+            Ok(usage)
+        }
+        err => err,
+    };
     let _ = app.emit("refresh-state", RefreshState { account_id: id, busy: false });
 
     let keep_previous = |msg: String| -> Snapshot {

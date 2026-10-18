@@ -46,10 +46,6 @@ pub async fn fetch(client: &reqwest::Client, account: &Account) -> Result<Usage,
     let email = auth.as_ref().and_then(|a| a.email.clone());
     let mut usage = fetch_usage(client, account, auth).await?;
     usage.signed_in_as = email;
-    if let Some(dir) = sessions_dir(account.data_path.as_deref()) {
-        let since = super::tokens::week_start(&usage.meters, Utc::now());
-        usage.tokens = super::tokens::scan(move || super::tokens::codex(&dir, since)).await;
-    }
     Ok(usage)
 }
 

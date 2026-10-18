@@ -1,6 +1,8 @@
 //! Tokens used this week, counted from the logs Claude Code and Codex keep on
 //! this PC (the same numbers their own usage reports add up). Only read; nothing
 //! is sent anywhere. Only files changed since the window started are opened.
+//! The app decides where the week starts (it notices early resets) and calls
+//! [`for_account`] after each refresh.
 
 use std::collections::HashSet;
 use std::fs::File;
@@ -8,28 +10,30 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::util::timestamp;
-use crate::{Meter, TokenUsage};
+use crate::{Account, Meter, ProviderKind, TokenUsage};
 
-/// Start of the current weekly window: a week before the weekly limit resets,
-/// or simply the last 7 days when there's no weekly limit to go by.
-pub(crate) fn week_start(meters: &[Meter], now: DateTime<Utc>) -> DateTime<Utc> {
+/// The weekly limit that defines "this week": Claude's all-models week, else the
+/// first weekly gauge.
+pub fn weekly_meter(meters: &[Meter]) -> Option<&Meter> {
     meters
         .iter()
-        .filter(|m| m.label.starts_with("Weekly"))
-        .filter_map(|m| m.resets_at)
-        .filter(|r| *r > now)
-        .min()
-        .map(|r| r - Duration::days(7))
-        .unwrap_or(now - Duration::days(7))
+        .find(|m| m.label == "Weekly · all models")
+        .or_else(|| meters.iter().find(|m| m.label.starts_with("Weekly")))
 }
 
-/// Runs a log scan off the async threads; the logs can be large.
-pub(crate) async fn scan(f: impl FnOnce() -> Option<TokenUsage> + Send + 'static) -> Option<TokenUsage> {
-    tokio::task::spawn_blocking(f).await.ok().flatten()
+/// Tokens this account's local tool logged since `since`. Blocking: the logs can
+/// be large, so call it off the async threads.
+pub fn for_account(account: &Account, since: DateTime<Utc>) -> Option<TokenUsage> {
+    let over = account.data_path.as_deref();
+    match account.kind {
+        ProviderKind::ClaudePlan => claude(&super::config_dir(over, "CLAUDE_CONFIG_DIR", ".claude")?, since),
+        ProviderKind::CodexPlan => codex(&super::codex_plan::sessions_dir(over)?, since),
+        _ => None,
+    }
 }
 
 /// `.jsonl` files under `dir` changed at or after `since`.
@@ -148,6 +152,17 @@ mod tests {
     }
 
     #[test]
+    fn weekly_meter_prefers_all_models() {
+        let meters = vec![
+            Meter::percent("Session (5-hour)", 10.0, None),
+            Meter::percent("Weekly · Opus", 50.0, None),
+            Meter::percent("Weekly · all models", 30.0, None),
+        ];
+        assert_eq!(weekly_meter(&meters).unwrap().label, "Weekly · all models");
+        assert_eq!(weekly_meter(&meters[..2]).unwrap().label, "Weekly · Opus");
+    }
+
+    #[test]
     fn claude_counts_each_reply_once() {
         let since = at("2026-10-12T00:00:00Z");
         let reply = |id: &str, ts: &str| {
@@ -186,16 +201,5 @@ mod tests {
         ];
         add_codex_session(session.into_iter(), since, &mut t);
         assert_eq!((t.input, t.cache_read, t.output), (2000, 2000, 200));
-    }
-
-    #[test]
-    fn week_starts_a_week_before_the_weekly_reset() {
-        let now = at("2026-10-16T12:00:00Z");
-        let meters = vec![
-            Meter::percent("Session (5-hour)", 10.0, Some(at("2026-10-16T14:00:00Z"))),
-            Meter::percent("Weekly · all models", 40.0, Some(at("2026-10-19T08:00:00Z"))),
-        ];
-        assert_eq!(week_start(&meters, now), at("2026-10-12T08:00:00Z"));
-        assert_eq!(week_start(&[], now), now - Duration::days(7));
     }
 }

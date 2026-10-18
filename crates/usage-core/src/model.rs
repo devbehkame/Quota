@@ -172,6 +172,22 @@ pub struct TokenUsage {
     pub cache_read: u64,
     /// Input written to the prompt cache (Claude only).
     pub cache_write: u64,
+    /// This PC's share of the weekly limit, estimated by the app (see `weekly` there).
+    pub share: Option<WeeklyShare>,
+}
+
+/// How much of the weekly limit this PC used, in percentage points of the limit.
+#[derive(Serialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WeeklyShare {
+    /// The weekly limit used so far, all devices together.
+    pub used: f64,
+    /// The part of `used` that rose while this PC was busy.
+    pub this_pc: f64,
+    /// Usage Quota couldn't place: from before it was watching this week, or
+    /// across a long gap between refreshes (the PC asleep, Quota closed).
+    pub unsplit: f64,
+    pub tracked_since: DateTime<Utc>,
 }
 
 /// One-off credits that restore a usage limit early, as Claude and ChatGPT grant them.

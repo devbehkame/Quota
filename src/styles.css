@@ -641,6 +641,32 @@ body.dragging * {
   background: var(--muted);
 }
 
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.share-bar {
+  gap: 0;
+}
+
+.seg.pc,
+.dot.pc {
+  background: var(--primary);
+}
+
+.seg.other,
+.dot.other {
+  background: var(--muted);
+}
+
+.seg.unsplit,
+.dot.unsplit {
+  background: repeating-linear-gradient(135deg, var(--muted) 0 3px, transparent 3px 6px);
+}
+
 .tokens-legend {
   display: flex;
   flex-wrap: wrap;

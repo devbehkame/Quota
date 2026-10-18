@@ -52,6 +52,15 @@ export interface TokenUsage {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  /** This PC's share of the weekly limit (estimated), in percentage points. */
+  share: WeeklyShare | null;
+}
+
+export interface WeeklyShare {
+  used: number;
+  thisPc: number;
+  unsplit: number;
+  trackedSince: string;
 }
 
 export interface LimitResets {
