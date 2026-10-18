@@ -140,8 +140,9 @@ export function resetsRow(r: LimitResets, inline = false): HTMLElement {
 }
 
 /**
- * Tokens used this week (from the local logs): the total, a bar split into
- * input / output / cache, and each part's share of the whole.
+ * Tokens used in a limit window (from the local logs): the total, a bar split
+ * into input / output / cache, each part's share of the whole, and this PC's
+ * share of the limit.
  */
 export function tokensView(t: TokenUsage, source: string): HTMLElement {
   const name = t.period === "session" ? "session" : "week";
@@ -237,5 +238,63 @@ function shareView(s: WeeklyShare, name: string): HTMLElement {
         h("span", { class: "tk" }, h("i", { class: `dot ${x.key}` }), h("span", { class: "tk-label" }, x.label), h("b", null, p(x.value))),
       ),
     ),
+  );
+}
+
+/** The tab picked in each card (session or week), kept across refreshes and restarts. */
+const picked = new Map<string, TokenUsage["period"]>();
+const PICKED_KEY = "quota.tokensTab";
+try {
+  for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem(PICKED_KEY) ?? "{}"))) {
+    if (v === "session" || v === "week") picked.set(k, v);
+  }
+} catch {
+  /* nothing saved yet */
+}
+
+/**
+ * The token sections of a card, one at a time behind a Session | Week switch.
+ * With only one window to show, there's no switch.
+ */
+export function tokensTabs(cardId: string, list: TokenUsage[], source: string): HTMLElement | null {
+  if (!list.length) return null;
+  if (list.length === 1) return h("div", { class: "tokens-panel" }, tokensView(list[0]!, source));
+  const label = (p: TokenUsage["period"]) => (p === "session" ? "Session" : "Week");
+  let current = list.find((t) => t.period === picked.get(cardId)) ?? list[0]!;
+  const body = h("div", { class: "tokens-tab-body", role: "tabpanel" }, tokensView(current, source));
+  const tabs = list.map((t) =>
+    h(
+      "button",
+      {
+        class: "seg-tab",
+        type: "button",
+        role: "tab",
+        "aria-selected": String(t === current),
+        onclick: (e: Event) => {
+          e.stopPropagation();
+          current = t;
+          picked.set(cardId, t.period);
+          try {
+            localStorage.setItem(PICKED_KEY, JSON.stringify(Object.fromEntries(picked)));
+          } catch {
+            /* not saved; fine */
+          }
+          tabs.forEach((b, i) => b.setAttribute("aria-selected", String(list[i] === t)));
+          body.replaceChildren(tokensView(t, source));
+        },
+      },
+      label(t.period),
+    ),
+  );
+  return h(
+    "div",
+    { class: "tokens-panel" },
+    h(
+      "div",
+      { class: "tokens-panel-head" },
+      h("span", { class: "meter-label" }, "On this PC"),
+      h("div", { class: "seg-tabs", role: "tablist", "aria-label": "Limit window" }, ...tabs),
+    ),
+    body,
   );
 }

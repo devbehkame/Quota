@@ -16,7 +16,7 @@ import {
 } from "./api";
 import { h, icon, logo } from "./dom";
 import { ago, headline, tickTimes } from "./format";
-import { meter, resetsRow, tokensView } from "./meterview";
+import { meter, resetsRow, tokensTabs } from "./meterview";
 import { isWindows, keyStore } from "./platform";
 import { PROVIDERS, provider, type ProviderInfo } from "./providers";
 
@@ -372,7 +372,7 @@ function card(a: Account): HTMLElement {
       { class: "card-body" },
       ...(usage?.meters ?? []).map(meter),
       usage?.resets ? resetsRow(usage.resets) : null,
-      ...(usage?.tokens ?? []).map((t) => tokensView(t, a.kind === "codex_plan" ? "Codex's session logs" : "Claude Code's logs")),
+      tokensTabs(a.id, usage?.tokens ?? [], a.kind === "codex_plan" ? "Codex's session logs" : "Claude Code's logs"),
       usage?.notes.length ? h("ul", { class: "notes" }, ...usage.notes.map((n) => h("li", null, n))) : null,
     );
   }
