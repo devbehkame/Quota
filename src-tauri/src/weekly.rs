@@ -59,23 +59,24 @@ pub async fn apply(app: &AppHandle, account: &Account, usage: &mut Usage) {
     let weeks = app.state::<Weeks>();
 
     // Decide where each window starts (this notices early resets), then count
-    // this PC's tokens for all of them in one pass over the logs.
-    let plans: Vec<(&Window, Option<(f64, Track)>)> = {
+    // this PC's tokens for all of them in one pass over the logs. Only windows
+    // the plan has a limit for count: some ChatGPT plans have just the week.
+    let plans: Vec<(&Window, f64, Track)> = {
         let tracks = weeks.tracks.lock().unwrap();
         WINDOWS
             .iter()
-            .map(|w| {
-                let tracked = (w.gauge)(&usage.meters).map(|m| {
-                    let pct = m.percent_used.unwrap_or(0.0);
-                    let prev = tracks.get(&format!("{}{}", account.id, w.key));
-                    (pct, weekly::begin(prev, pct, m.resets_at, w.length, now))
-                });
-                (w, tracked)
+            .filter_map(|w| {
+                let m = (w.gauge)(&usage.meters)?;
+                let pct = m.percent_used.unwrap_or(0.0);
+                let prev = tracks.get(&format!("{}{}", account.id, w.key));
+                Some((w, pct, weekly::begin(prev, pct, m.resets_at, w.length, now)))
             })
             .collect()
     };
-    let sinces: Vec<_> =
-        plans.iter().map(|(w, t)| t.as_ref().map_or(now - w.length, |(_, t)| t.window_start)).collect();
+    if plans.is_empty() {
+        return;
+    }
+    let sinces: Vec<_> = plans.iter().map(|(_, _, t)| t.window_start).collect();
     let acc = account.clone();
     let Some(counts) =
         tauri::async_runtime::spawn_blocking(move || tokens::for_account(&acc, &sinces)).await.ok().flatten()
@@ -85,21 +86,19 @@ pub async fn apply(app: &AppHandle, account: &Account, usage: &mut Usage) {
 
     let mut tracks = weeks.tracks.lock().unwrap();
     let mut out = Vec::new();
-    for ((w, tracked), mut count) in plans.into_iter().zip(counts) {
+    for ((w, pct, mut t), mut count) in plans.into_iter().zip(counts) {
         count.period = w.period;
-        if let Some((pct, mut t)) = tracked {
-            t.observe(pct, weekly::units(&count), now);
-            count.share = Some(t.share());
-            tracks.insert(format!("{}{}", account.id, w.key), t);
-        }
+        t.observe(pct, weekly::units(&count), now);
+        count.share = Some(t.share());
+        tracks.insert(format!("{}{}", account.id, w.key), t);
         let used = weekly::units(&count) > 0.0 || count.share.as_ref().is_some_and(|s| s.used > 0.0);
         if used {
             out.push(count);
         }
     }
     weeks.save(&tracks);
-    // Show nothing when this PC hasn't used the tool all week.
-    if out.iter().any(|c| c.period == Period::Week && weekly::units(c) > 0.0) {
+    // Show nothing when this PC hasn't used the tool in any of them.
+    if out.iter().any(|c| weekly::units(c) > 0.0) {
         usage.tokens = out;
     }
 }
