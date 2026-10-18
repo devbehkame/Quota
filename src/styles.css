@@ -604,9 +604,56 @@ body.dragging * {
 .tokens-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+
+/* Opening and closing slide the content: the row grows from 0 to its height. */
+.tokens-drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.22s ease,
+    opacity 0.18s ease;
+}
+
+.tokens-panel.open .tokens-drawer {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.tokens-drawer-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tokens-drawer-inner > .tokens-tab-body {
+  padding-top: 10px;
+}
+
+/* On a click, the summary and the tabs swap places with a quick fade. */
+.tokens-panel.animate .seg-tabs,
+.tokens-panel.animate .tokens-summary {
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tokens-drawer,
+  .tokens-toggle svg {
+    transition: none;
+  }
+
+  .tokens-panel.animate .seg-tabs,
+  .tokens-panel.animate .tokens-summary {
+    animation: none;
+  }
 }
 
 .tokens-panel-head {
@@ -643,7 +690,7 @@ body.dragging * {
   flex: none;
   color: var(--muted);
   transform: rotate(-90deg);
-  transition: transform 0.15s ease;
+  transition: transform 0.22s ease;
 }
 
 .tokens-panel.open .tokens-toggle svg {
@@ -713,7 +760,6 @@ body.dragging * {
   flex-direction: column;
 }
 
-.tokens-tab-body[hidden],
 .seg-tabs[hidden],
 .tokens-summary[hidden] {
   display: none;

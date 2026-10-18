@@ -283,6 +283,8 @@ export function tokensTabs(cardId: string, list: TokenUsage[], source: string): 
   let current = list.find((t) => t.period === picked.get(cardId)) ?? list[0]!;
 
   const body = h("div", { class: "tokens-tab-body", role: many ? "tabpanel" : null }, tokensView(current, source));
+  // Slides open and shut: the outer grid row animates between 0 and the content's height.
+  const drawer = h("div", { class: "tokens-drawer" }, h("div", { class: "tokens-drawer-inner" }, body));
   const sum = h("span", { class: "tokens-summary" }, summary(current, many));
   const tabs = list.map((t) =>
     h(
@@ -318,7 +320,7 @@ export function tokensTabs(cardId: string, list: TokenUsage[], source: string): 
   const setOpen = (open: boolean) => {
     panel.classList.toggle("open", open);
     toggle.setAttribute("aria-expanded", String(open));
-    body.hidden = !open;
+    drawer.inert = !open;
     if (tabList) tabList.hidden = !open;
     sum.hidden = open;
   };
@@ -328,9 +330,10 @@ export function tokensTabs(cardId: string, list: TokenUsage[], source: string): 
     if (open) opened.add(cardId);
     else opened.delete(cardId);
     remember();
+    panel.classList.add("animate"); // only a click animates, not a redraw on refresh
     setOpen(open);
   });
-  panel.append(h("div", { class: "tokens-panel-head" }, toggle, tabList), body);
+  panel.append(h("div", { class: "tokens-panel-head" }, toggle, tabList), drawer);
   setOpen(opened.has(cardId));
   return panel;
 }
