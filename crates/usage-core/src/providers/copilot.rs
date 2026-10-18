@@ -164,7 +164,7 @@ pub(crate) fn parse_quota(v: &Value) -> Option<Usage> {
     if !unlimited.is_empty() {
         notes.push(format!("Unlimited: {}.", unlimited.join(", ").to_lowercase()));
     }
-    Some(Usage { plan: plan_name(v), meters, notes, signed_in_as: github_login(&v["login"]), resets: None })
+    Some(Usage { plan: plan_name(v), meters, notes, signed_in_as: github_login(&v["login"]), resets: None, tokens: None })
 }
 
 fn quota_label(key: &str) -> String {
@@ -260,7 +260,7 @@ pub(crate) fn billing_usage(report: &Value, allowance: Option<f64>, now: DateTim
     if allowance.is_none() {
         notes.push("Set your monthly allowance (e.g. 300 for Pro) on this account to see how many are left.".into());
     }
-    Usage { plan: None, meters: vec![meter], notes, signed_in_as: None, resets: None }
+    Usage { plan: None, meters: vec![meter], notes, signed_in_as: None, resets: None, tokens: None }
 }
 
 #[cfg(test)]

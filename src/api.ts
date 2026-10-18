@@ -41,6 +41,17 @@ export interface Usage {
   signedInAs: string | null;
   /** Banked limit resets (Claude and ChatGPT plans), when the service reports them. */
   resets: LimitResets | null;
+  /** Tokens used this week, from the local Claude Code / Codex logs. */
+  tokens: TokenUsage | null;
+}
+
+export interface TokenUsage {
+  /** Start of the weekly window the counts cover. */
+  since: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
 }
 
 export interface LimitResets {

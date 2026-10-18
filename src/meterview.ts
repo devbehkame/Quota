@@ -1,6 +1,6 @@
-import type { LimitResets, Meter } from "./api";
+import type { LimitResets, Meter, TokenUsage } from "./api";
 import { h } from "./dom";
-import { dateLabel, headline, leftPct, level, money, pct, resetLabel, until } from "./format";
+import { dateLabel, headline, leftPct, level, money, pct, resetLabel, tokens, until } from "./format";
 
 /** One gauge as drawn on an account card (main window and widget hover card). */
 export function meter(m: Meter): HTMLElement {
@@ -137,4 +137,58 @@ export function resetsRow(r: LimitResets, inline = false): HTMLElement {
   row.addEventListener("mouseleave", hideTip);
   row.addEventListener("blur", hideTip);
   return row;
+}
+
+/**
+ * Tokens used this week (from the local logs): the total, a bar split into
+ * input / output / cache, and each part's share of the whole.
+ */
+export function tokensView(t: TokenUsage, source: string): HTMLElement {
+  const cache = t.cacheRead + t.cacheWrite;
+  const total = t.input + t.output + cache;
+  const parts = [
+    { key: "in", label: "Input", value: t.input },
+    { key: "out", label: "Output", value: t.output },
+    { key: "cache", label: "Cache", value: cache },
+  ];
+  const share = (v: number) => (total ? (v / total) * 100 : 0);
+  const shareText = (v: number) => {
+    const p = share(v);
+    if (p > 0 && p < 1) return "<1%";
+    if (p > 99 && p < 100) return ">99%";
+    return `${Math.round(p)}%`;
+  };
+  const cacheTip = t.cacheWrite ? ` (${tokens(t.cacheRead)} read, ${tokens(t.cacheWrite)} written)` : " (read from the prompt cache)";
+  return h(
+    "div",
+    {
+      class: "tokens",
+      title: `Since ${dateLabel(t.since)}, the start of this weekly window. Counted from ${source} on this PC.`,
+    },
+    h(
+      "div",
+      { class: "meter-top" },
+      h("span", { class: "meter-label" }, "Tokens this week"),
+      h("span", { class: "tokens-total" }, `${tokens(total)} total`),
+    ),
+    h(
+      "div",
+      { class: "tokens-bar", role: "img", "aria-label": parts.map((p) => `${p.label} ${shareText(p.value)}`).join(", ") },
+      ...parts.filter((p) => p.value > 0).map((p) => h("span", { class: `seg ${p.key}`, style: { width: `${share(p.value)}%` } })),
+    ),
+    h(
+      "div",
+      { class: "tokens-legend" },
+      ...parts.map((p) =>
+        h(
+          "span",
+          { class: "tk", title: p.key === "cache" ? `Cache: ${tokens(cache)}${cacheTip}` : `${p.label}: ${p.value.toLocaleString()} tokens` },
+          h("i", { class: `dot ${p.key}` }),
+          h("span", { class: "tk-label" }, p.label),
+          h("b", null, tokens(p.value)),
+          h("span", { class: "tk-share" }, shareText(p.value)),
+        ),
+      ),
+    ),
+  );
 }

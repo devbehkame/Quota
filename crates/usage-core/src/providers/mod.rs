@@ -7,6 +7,7 @@ pub mod cursor;
 pub mod deepseek;
 pub mod openai_api;
 pub mod openrouter;
+pub mod tokens;
 
 use std::path::PathBuf;
 

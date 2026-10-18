@@ -601,6 +601,79 @@ body.dragging * {
   gap: 8px;
 }
 
+.tokens {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.tokens-total {
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tokens-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--track);
+  gap: 2px;
+}
+
+.tokens-bar .seg {
+  min-width: 3px;
+}
+
+.seg.in,
+.dot.in {
+  background: var(--primary);
+}
+
+.seg.out,
+.dot.out {
+  background: var(--good);
+}
+
+.seg.cache,
+.dot.cache {
+  background: var(--muted);
+}
+
+.tokens-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+}
+
+.tk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tk .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.tk-label {
+  color: var(--text-2);
+}
+
+.tk b {
+  font-weight: 650;
+}
+
+.tk-share {
+  color: var(--muted);
+}
+
 .tip {
   position: fixed;
   z-index: 60;

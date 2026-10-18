@@ -44,10 +44,13 @@ pub fn auth_path(over: Option<&str>) -> Option<PathBuf> {
 pub async fn fetch(client: &reqwest::Client, account: &Account) -> Result<Usage, UsageError> {
     let auth = read_auth(account.data_path.as_deref());
     let email = auth.as_ref().and_then(|a| a.email.clone());
-    fetch_usage(client, account, auth).await.map(|mut u| {
-        u.signed_in_as = email;
-        u
-    })
+    let mut usage = fetch_usage(client, account, auth).await?;
+    usage.signed_in_as = email;
+    if let Some(dir) = sessions_dir(account.data_path.as_deref()) {
+        let since = super::tokens::week_start(&usage.meters, Utc::now());
+        usage.tokens = super::tokens::scan(move || super::tokens::codex(&dir, since)).await;
+    }
+    Ok(usage)
 }
 
 async fn fetch_usage(client: &reqwest::Client, account: &Account, auth: Option<Auth>) -> Result<Usage, UsageError> {
@@ -357,7 +360,7 @@ pub(crate) fn to_usage(found: Found, now: DateTime<Utc>, note: Option<String>) -
         .enumerate()
         .map(|(i, w)| window_meter(window_label(w.window_minutes, i), w, now))
         .collect();
-    Usage { plan: found.plan, meters, notes: note.into_iter().collect(), signed_in_as: None, resets: None }
+    Usage { plan: found.plan, meters, notes: note.into_iter().collect(), signed_in_as: None, resets: None, tokens: None }
 }
 
 #[cfg(test)]

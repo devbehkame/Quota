@@ -425,7 +425,7 @@ pub(crate) fn parse_cli_report(v: &Value) -> Option<Usage> {
             meters.push(Meter::percent(label, used, timestamp(&b["reset_time"])));
         }
     }
-    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec!["From the Antigravity CLI (agy).".into()], signed_in_as: None, resets: None })
+    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec!["From the Antigravity CLI (agy).".into()], signed_in_as: None, resets: None, tokens: None })
 }
 
 /// Newer builds: `{ response: { groups: [{ displayName, buckets: [{ displayName,
@@ -455,7 +455,7 @@ pub(crate) fn parse_summary(v: &Value) -> Option<Usage> {
             meters.push(m);
         }
     }
-    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec![], signed_in_as: None, resets: None })
+    (!meters.is_empty()).then(|| Usage { plan: None, meters, notes: vec![], signed_in_as: None, resets: None, tokens: None })
 }
 
 /// Remaining fraction, reset time and the model labels sharing one quota.
@@ -521,7 +521,7 @@ pub(crate) fn parse(v: &Value) -> Option<Usage> {
         .filter(|p| !p.is_empty())
         .map(str::to_owned);
     let email = us["email"].as_str().map(str::trim).filter(|e| e.contains('@')).map(str::to_owned);
-    Some(Usage { plan, meters, notes: vec![], signed_in_as: email, resets: None })
+    Some(Usage { plan, meters, notes: vec![], signed_in_as: email, resets: None, tokens: None })
 }
 
 #[cfg(test)]

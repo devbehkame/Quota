@@ -46,6 +46,18 @@ export function resetLabel(iso: string): string {
   return sameDay ? time : `${t.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, ${time}`;
 }
 
+/** A token count in a few characters: 950, 12.4K, 3.1M, 1.2B. */
+export function tokens(n: number): string {
+  const units: [number, string][] = [[1e9, "B"], [1e6, "M"], [1e3, "K"]];
+  for (const [size, unit] of units) {
+    if (n >= size) {
+      const v = n / size;
+      return `${v >= 100 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")}${unit}`;
+    }
+  }
+  return String(Math.round(n));
+}
+
 /** A full date and time, e.g. "Fri, Oct 24, 3:00 PM". */
 export function dateLabel(iso: string): string {
   const t = new Date(iso);

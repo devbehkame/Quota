@@ -166,7 +166,7 @@ pub(crate) fn parse_summary(v: &Value) -> Option<Usage> {
         let mut c = s.chars();
         c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
     });
-    Some(Usage { plan: plan_name, meters, notes, signed_in_as: None, resets: None })
+    Some(Usage { plan: plan_name, meters, notes, signed_in_as: None, resets: None, tokens: None })
 }
 
 #[cfg(test)]

@@ -10,8 +10,8 @@ The taskbar widget, next to the clock:
 
 | Account | What you see | How it connects |
 | --- | --- | --- |
-| **Claude plan** (Pro / Max) | 5-hour session and weekly limits, with reset times, plus any banked limit resets and when they expire | Reads the sign-in from [Claude Code](https://claude.com/product/claude-code) on your PC. Nothing to paste. |
-| **ChatGPT plan** (Plus / Pro) | Live 5-hour and weekly Codex limits, with reset times, plus any banked usage limit resets and when they expire | Reuses the ChatGPT sign-in from the [Codex CLI](https://developers.openai.com/codex/cli) on your PC. Nothing to paste. |
+| **Claude plan** (Pro / Max) | 5-hour session and weekly limits, with reset times, plus any banked limit resets and when they expire, and the tokens you used this week (input, output, cache) from Claude Code's logs | Reads the sign-in from [Claude Code](https://claude.com/product/claude-code) on your PC. Nothing to paste. |
+| **ChatGPT plan** (Plus / Pro) | Live 5-hour and weekly Codex limits, with reset times, plus any banked usage limit resets and when they expire, and the tokens you used this week from Codex's logs | Reuses the ChatGPT sign-in from the [Codex CLI](https://developers.openai.com/codex/cli) on your PC. Nothing to paste. |
 | **Anthropic API** | Spend this month, and what's left of your budget | Admin API key (`sk-ant-admin…`) |
 | **OpenAI API** | Spend this month, and what's left of your budget | Admin API key (`sk-admin-…`) |
 | **OpenRouter** | Credits left | API key (a management key shows the whole account) |

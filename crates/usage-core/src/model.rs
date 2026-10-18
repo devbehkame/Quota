@@ -156,6 +156,22 @@ pub struct Usage {
     pub signed_in_as: Option<String>,
     /// Banked limit resets (Claude and ChatGPT plans), when the service reports them.
     pub resets: Option<LimitResets>,
+    /// Tokens used this week, from the local Claude Code / Codex logs.
+    pub tokens: Option<TokenUsage>,
+}
+
+/// Tokens counted from local logs since `since` (the start of the weekly window).
+#[derive(Serialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenUsage {
+    pub since: DateTime<Utc>,
+    /// Input that wasn't served from the prompt cache.
+    pub input: u64,
+    pub output: u64,
+    /// Input read back from the prompt cache.
+    pub cache_read: u64,
+    /// Input written to the prompt cache (Claude only).
+    pub cache_write: u64,
 }
 
 /// One-off credits that restore a usage limit early, as Claude and ChatGPT grant them.
